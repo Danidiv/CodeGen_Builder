@@ -128,3 +128,50 @@ revoke all on function public.consume_usage(int) from public, anon;
 revoke all on function public.get_usage(int) from public, anon;
 grant execute on function public.consume_usage(int) to authenticated;
 grant execute on function public.get_usage(int) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Published sites: a public link /s/<id> that shows the site of a project.
+-- Safe to run again.
+-- ---------------------------------------------------------------------------
+create table if not exists public.published_sites (
+  id           text primary key default substr(replace(gen_random_uuid()::text, '-', ''), 1, 10),
+  project_id   uuid not null unique references public.projects (id) on delete cascade,
+  user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  name         text not null default 'My site',
+  files        jsonb not null,
+  published_at timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
+alter table public.published_sites enable row level security;
+
+drop policy if exists "Users read own published sites"   on public.published_sites;
+drop policy if exists "Users insert own published sites" on public.published_sites;
+drop policy if exists "Users update own published sites" on public.published_sites;
+drop policy if exists "Users delete own published sites" on public.published_sites;
+
+-- The owner manages the site. Visitors do NOT get a table policy: they can only
+-- fetch ONE site by its id through get_published_site() below, so nobody can list all sites.
+create policy "Users read own published sites"
+  on public.published_sites for select using (auth.uid() = user_id);
+create policy "Users insert own published sites"
+  on public.published_sites for insert with check (auth.uid() = user_id);
+create policy "Users update own published sites"
+  on public.published_sites for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users delete own published sites"
+  on public.published_sites for delete using (auth.uid() = user_id);
+
+create or replace function public.get_published_site(p_id text)
+returns json
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select json_build_object('name', name, 'files', files)
+    from public.published_sites
+   where id = p_id;
+$$;
+
+revoke all on function public.get_published_site(text) from public;
+grant execute on function public.get_published_site(text) to anon, authenticated;

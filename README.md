@@ -108,3 +108,10 @@ and up to 3 images. Images are shrunk to 1024 px JPEG in the browser. Text files
 images are sent to the model as a visual reference. The model must support images (e.g. `anthropic/claude-sonnet-4.5`
 on OpenRouter, or a vision model in LM Studio); otherwise the chat says so. Limits are checked again on the server
 (`lib/attachments.ts`). Images are not stored in the project, only their names appear in the chat.
+
+## Publish site (public link)
+
+Cloud mode only. In the left panel, "Publish site" saves the files of the current project into `published_sites`
+and gives a public link `/s/<id>` (works without login). "Update" publishes the current version to the same link;
+"Unpublish" removes it. Visitors can only fetch ONE site by id (function `get_published_site`), there is no list of all sites.
+The site runs in the Sandpack iframe (CodeSandbox origin), not on your own domain. Run `supabase/schema.sql` again once.

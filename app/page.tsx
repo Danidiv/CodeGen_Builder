@@ -14,6 +14,7 @@ import { errorHint } from "@/lib/errorHints";
 import { ERROR_MARKER } from "@/lib/protocol";
 import { downloadProjectZip } from "@/lib/zip";
 import { getStyle } from "@/lib/styles";
+import PublishBar from "@/components/PublishBar";
 import type { Attachment } from "@/lib/attachments";
 import { TEMPLATES, getTemplate } from "@/lib/templates";
 import { isMultiSiteRequest } from "@/lib/siteTypes";
@@ -853,6 +854,9 @@ export default function Home() {
           onDownload={handleDownload}
           onToggleAutoFix={setAutoFix}
         />
+        {supabase && projectId && (
+          <PublishBar sb={supabase} projectId={projectId} name={projectName} files={files} disabled={loading} />
+        )}
         <div className="min-h-0 flex-1">
           <Chat
             messages={messages}
