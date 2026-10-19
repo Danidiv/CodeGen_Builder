@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { getSystemPrompt } from "@/lib/prompts";
+import { CHAT_PROMPT, getSystemPrompt } from "@/lib/prompts";
 
 /** Local models get the short prompt (less context used); PROMPT_MODE=full|compact overrides. */
 function systemPrompt(): string {
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     }
   }
 
-  let body: { messages?: ChatMessage[]; files?: Record<string, string>; style?: string; attachments?: unknown };
+  let body: { messages?: ChatMessage[]; files?: Record<string, string>; style?: string; attachments?: unknown; mode?: string };
   try {
     body = await req.json();
   } catch {
@@ -52,10 +52,17 @@ export async function POST(req: Request) {
   const attachments = sanitizeAttachments(body.attachments);
   const images = attachments.filter((a) => a.kind === "image").map((a) => a.data);
 
-  // One self-contained message: current files + earlier requests + new request.
-  const apiMessages: ChatMessage[] = [
-    { role: "user", content: buildUserPrompt(messages, files, getStyle(body.style)?.prompt ?? "", attachments) },
-  ];
+  // Chat mode: the user only talks. Short answer, no code, recent messages as context.
+  const chatMode = body.mode === "chat";
+  const gen: GenOptions = chatMode ? { system: CHAT_PROMPT, maxTokens: 700 } : { system: systemPrompt() };
+
+  // Build mode: ONE self-contained message: current files + earlier requests + new request.
+  const apiMessages: ChatMessage[] = chatMode
+    ? messages
+        .slice(-8)
+        .filter((m) => typeof m.content === "string" && (m.role === "user" || m.role === "assistant"))
+        .map((m) => ({ role: m.role, content: m.content.slice(0, 1500) }))
+    : [{ role: "user", content: buildUserPrompt(messages, files, getStyle(body.style)?.prompt ?? "", attachments) }];
 
   const provider = (process.env.LLM_PROVIDER || "anthropic").toLowerCase();
   const encoder = new TextEncoder();
@@ -73,11 +80,11 @@ export async function POST(req: Request) {
       };
       try {
         if (provider === "lmstudio") {
-          await streamFromLmStudio(apiMessages, send, upstream.signal, images);
+          await streamFromLmStudio(apiMessages, send, upstream.signal, chatMode ? [] : images, gen);
         } else if (provider === "openrouter") {
-          await streamFromOpenRouter(apiMessages, send, upstream.signal, images);
+          await streamFromOpenRouter(apiMessages, send, upstream.signal, chatMode ? [] : images, gen);
         } else {
-          await streamFromClaude(apiMessages, send, upstream.signal, images);
+          await streamFromClaude(apiMessages, send, upstream.signal, chatMode ? [] : images, gen);
         }
       } catch (err) {
         if (!upstream.signal.aborted) {
@@ -106,10 +113,13 @@ export async function POST(req: Request) {
   });
 }
 
+/** What differs between building and chatting: the system prompt and the answer length. */
+type GenOptions = { system: string; maxTokens?: number };
+
 // ---------------------------------------------------------------------------
 // Provider: Claude API (Anthropic)
 // ---------------------------------------------------------------------------
-async function streamFromClaude(messages: ChatMessage[], send: (t: string) => void, signal: AbortSignal, images: string[] = []) {
+async function streamFromClaude(messages: ChatMessage[], send: (t: string) => void, signal: AbortSignal, images: string[] = [], gen: GenOptions) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set. Add it to .env.local");
 
@@ -117,8 +127,8 @@ async function streamFromClaude(messages: ChatMessage[], send: (t: string) => vo
   const response = client.messages.stream(
     {
       model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5",
-      max_tokens: 16000,
-      system: systemPrompt(),
+      max_tokens: gen.maxTokens ?? 16000,
+      system: gen.system,
       messages: withImagesForClaude(messages, images),
     },
     { signal }
@@ -139,7 +149,7 @@ async function streamFromClaude(messages: ChatMessage[], send: (t: string) => vo
 // ---------------------------------------------------------------------------
 // Provider: LM Studio (local, OpenAI-compatible server)
 // ---------------------------------------------------------------------------
-async function streamFromLmStudio(messages: ChatMessage[], send: (t: string) => void, signal: AbortSignal, images: string[] = []) {
+async function streamFromLmStudio(messages: ChatMessage[], send: (t: string) => void, signal: AbortSignal, images: string[] = [], gen: GenOptions) {
   const baseUrl = (process.env.LMSTUDIO_BASE_URL || "http://localhost:1234/v1").replace(/\/$/, "");
   // Qwen3-style models "think" for a long time before answering, which is slow.
   // "/no_think" at the end of the message switches that off for models that support it.
@@ -155,6 +165,7 @@ async function streamFromLmStudio(messages: ChatMessage[], send: (t: string) => 
     body: { model: process.env.LMSTUDIO_MODEL || "local-model", temperature: 0.2 },
     messages,
     images,
+    gen,
     send,
     signal,
     unreachableHint: `Cannot reach LM Studio at ${baseUrl}. Start the local server in LM Studio and load a model.`,
@@ -164,7 +175,7 @@ async function streamFromLmStudio(messages: ChatMessage[], send: (t: string) => 
 // ---------------------------------------------------------------------------
 // Provider: OpenRouter (one key, many models; OpenAI-compatible)
 // ---------------------------------------------------------------------------
-async function streamFromOpenRouter(messages: ChatMessage[], send: (t: string) => void, signal: AbortSignal, images: string[] = []) {
+async function streamFromOpenRouter(messages: ChatMessage[], send: (t: string) => void, signal: AbortSignal, images: string[] = [], gen: GenOptions) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set. Add it to .env.local");
 
@@ -186,6 +197,7 @@ async function streamFromOpenRouter(messages: ChatMessage[], send: (t: string) =
     },
     messages,
     images,
+    gen,
     send,
     signal,
     unreachableHint: "Cannot reach OpenRouter. Check your internet connection.",
@@ -202,11 +214,12 @@ async function streamOpenAICompatible(opts: {
   body: Record<string, unknown>;
   messages: ChatMessage[];
   images?: string[];
+  gen: GenOptions;
   send: (t: string) => void;
   signal: AbortSignal;
   unreachableHint: string;
 }) {
-  const { label, baseUrl, headers, body, messages, images = [], send, signal, unreachableHint } = opts;
+  const { label, baseUrl, headers, body, messages, images = [], gen, send, signal, unreachableHint } = opts;
 
   let res: Response;
   try {
@@ -216,8 +229,9 @@ async function streamOpenAICompatible(opts: {
       signal,
       body: JSON.stringify({
         ...body,
+        ...(gen.maxTokens ? { max_tokens: gen.maxTokens } : {}),
         stream: true,
-        messages: [{ role: "system", content: systemPrompt() }, ...withImagesForOpenAI(messages, images)],
+        messages: [{ role: "system", content: gen.system }, ...withImagesForOpenAI(messages, images)],
       }),
     });
   } catch (err) {

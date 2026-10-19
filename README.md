@@ -123,3 +123,10 @@ The site runs in the Sandpack iframe (CodeSandbox origin), not on your own domai
 - You decide what to take down: run the queries in `supabase/moderation.sql` by hand in the Supabase SQL Editor
   (list reports, look at the site's code, block the project, undo a block). A blocked project disappears from its link and cannot be published again.
 - Run `supabase/schema.sql` again once to create the new tables and functions.
+
+## Chat vs build
+
+`lib/intent.ts` decides what a message is: greetings and thanks ("hi", "thanks") get a free canned answer, questions
+("how do I publish?") get a short chat answer from the AI (`mode: "chat"`, no code, project untouched), and everything with
+build words or app words ("build", "add", "banao", "landing page", "dark mode") builds as before. Messages with files and
+fix requests always build. Add words to the lists in `lib/intent.ts` if a message is classified wrongly.

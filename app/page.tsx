@@ -14,6 +14,7 @@ import { errorHint } from "@/lib/errorHints";
 import { ERROR_MARKER } from "@/lib/protocol";
 import { downloadProjectZip } from "@/lib/zip";
 import { getStyle } from "@/lib/styles";
+import { classifyIntent, smallTalkReply } from "@/lib/intent";
 import PublishBar from "@/components/PublishBar";
 import type { Attachment } from "@/lib/attachments";
 import { TEMPLATES, getTemplate } from "@/lib/templates";
@@ -640,7 +641,82 @@ export default function Home() {
     armedRef.current = false;
   }
 
+  /** The user only talks (no build request): answer in the chat, never touch the project. */
+  async function handleChat(text: string, baseMessages: UiMessage[]) {
+    const chatHistory: UiMessage[] = [...baseMessages, { role: "user", content: text }];
+    setMessages([...chatHistory, { role: "assistant", content: "" }]);
+    setLoading(true);
+    setStatus("Thinking...");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (supabase) {
+        const { data } = await supabase.auth.getSession();
+        if (data.session) headers.Authorization = `Bearer ${data.session.access_token}`;
+      }
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers,
+        signal: controller.signal,
+        body: JSON.stringify({
+          mode: "chat",
+          messages: chatHistory.filter((m) => !m.kind).map((m) => ({ role: m.role, content: m.content })),
+          files: {},
+        }),
+      });
+      const usedHeader = res.headers.get("X-Usage-Used");
+      const limitHeader = res.headers.get("X-Usage-Limit");
+      if (usedHeader !== null && limitHeader !== null) setUsage({ used: Number(usedHeader), limit: Number(limitHeader) });
+      if (!res.ok || !res.body) throw new Error(await res.text());
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let raw = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        raw += decoder.decode(value, { stream: true });
+        setMessages([...chatHistory, { role: "assistant", content: parseFiles(raw.replace(LENGTH_RE, "")).message }]);
+      }
+      if (raw.includes(ERROR_MARKER)) throw new Error(raw.slice(raw.indexOf(ERROR_MARKER) + ERROR_MARKER.length).trim());
+      const reply = parseFiles(raw.replace(LENGTH_RE, "")).message;
+      setMessages([
+        ...chatHistory,
+        { role: "assistant", content: reply || "I did not get an answer. Please try again.", ...(reply ? {} : { kind: "warning" as const }) },
+      ]);
+    } catch (err) {
+      if (controller.signal.aborted) {
+        setMessages([...chatHistory, { role: "assistant", content: "⏹ Stopped.", kind: "stopped" }]);
+      } else {
+        const msg = err instanceof Error ? err.message : "Something went wrong";
+        const friendly = /failed to fetch|networkerror|load failed/i.test(msg)
+          ? "Could not reach the server. Check that npm run dev is still running and your internet works."
+          : msg;
+        setMessages([...chatHistory, { role: "assistant", content: `Error: ${friendly}`, kind: "error" }]);
+      }
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setLoading(false);
+      setStatus(null);
+    }
+  }
+
   async function handleSend(text: string, versionLabel?: string, baseMessages: UiMessage[] = messages, attachments?: Attachment[]) {
+    // Only talking ("hi", "thanks", a question)? Answer in the chat and do not build anything.
+    // Fix requests and messages with files are always build requests.
+    if (!versionLabel && (attachments ?? attachRef.current).length === 0) {
+      const intent = classifyIntent(text);
+      if (intent === "smalltalk") {
+        setMessages([...baseMessages, { role: "user", content: text }, { role: "assistant", content: smallTalkReply(text) }]);
+        return;
+      }
+      if (intent === "chat") {
+        await handleChat(text, baseMessages);
+        return;
+      }
+    }
+
     // Several different websites in one message: one answer cannot hold them all.
     if (!versionLabel && isMultiSiteRequest(text)) {
       setMessages([

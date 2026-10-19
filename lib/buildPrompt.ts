@@ -1,4 +1,5 @@
 import { isMultiSiteRequest } from "./siteTypes";
+import { classifyIntent } from "./intent";
 import { Attachment, describeTextAttachments } from "./attachments";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -22,7 +23,7 @@ export function buildUserPrompt(messages: ChatMessage[], files: Record<string, s
 
   const previous = userTexts
     .slice(0, -1)
-    .filter((t) => !isErrorFixRequest(t) && !isMultiSiteRequest(t))
+    .filter((t) => !isErrorFixRequest(t) && !isMultiSiteRequest(t) && classifyIntent(t) === "build")
     .slice(-5)
     .map((t) => "- " + (t.length > 200 ? t.slice(0, 200) + "..." : t));
 
