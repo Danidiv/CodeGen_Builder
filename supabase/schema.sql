@@ -175,3 +175,83 @@ $$;
 
 revoke all on function public.get_published_site(text) from public;
 grant execute on function public.get_published_site(text) to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Safety: reports from visitors + blocking of projects (see supabase/moderation.sql).
+-- Safe to run again.
+-- ---------------------------------------------------------------------------
+create table if not exists public.blocked_projects (
+  project_id uuid primary key,
+  reason     text,
+  created_at timestamptz not null default now()
+);
+alter table public.blocked_projects enable row level security; -- no policies: only you (dashboard / SQL editor) can use it
+
+create table if not exists public.site_reports (
+  id         bigint generated always as identity primary key,
+  site_id    text not null,
+  reason     text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.site_reports enable row level security;     -- no policies: visitors can only use report_site()
+
+create or replace function public.report_site(p_id text, p_reason text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if length(trim(coalesce(p_reason, ''))) = 0 then
+    raise exception 'please choose a reason';
+  end if;
+  if not exists (select 1 from public.published_sites where id = p_id) then
+    raise exception 'site not found';
+  end if;
+  -- at most 100 reports per site are stored (protects against spam)
+  if (select count(*) from public.site_reports where site_id = p_id) >= 100 then
+    return;
+  end if;
+  insert into public.site_reports (site_id, reason) values (p_id, left(p_reason, 500));
+end;
+$$;
+
+revoke all on function public.report_site(text, text) from public;
+grant execute on function public.report_site(text, text) to anon, authenticated;
+
+-- Blocked projects are not shown to visitors any more.
+create or replace function public.get_published_site(p_id text)
+returns json
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select json_build_object('name', s.name, 'files', s.files)
+    from public.published_sites s
+   where s.id = p_id
+     and not exists (select 1 from public.blocked_projects b where b.project_id = s.project_id);
+$$;
+
+revoke all on function public.get_published_site(text) from public;
+grant execute on function public.get_published_site(text) to anon, authenticated;
+
+-- A blocked project cannot be published again (not even under a new link).
+create or replace function public.refuse_blocked_publish()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if exists (select 1 from public.blocked_projects b where b.project_id = new.project_id) then
+    raise exception 'This project was blocked by moderation and cannot be published.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists published_sites_refuse_blocked on public.published_sites;
+create trigger published_sites_refuse_blocked
+  before insert or update on public.published_sites
+  for each row execute function public.refuse_blocked_publish();

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { checkPublishable } from "./publishRules";
 
 type Files = Record<string, string>;
 
@@ -24,7 +25,10 @@ export function siteUrl(origin: string, id: string): string {
 }
 
 function fail(action: string, error: { message: string }): never {
-  if (/published_sites|get_published_site|schema cache|does not exist/i.test(error.message)) {
+  if (/blocked by moderation/i.test(error.message)) {
+    throw new Error("This project was blocked by moderation and cannot be published.");
+  }
+  if (/published_sites|get_published_site|report_site|schema cache|does not exist/i.test(error.message)) {
     throw new Error(
       "Publishing is not set up yet. Run supabase/schema.sql again in the Supabase SQL Editor, then run: notify pgrst, 'reload schema';"
     );
@@ -44,6 +48,8 @@ export async function publishSite(sb: SupabaseClient, projectId: string, name: s
   if (filesSize(files) > MAX_PUBLISH_BYTES) {
     throw new Error("This site is too big to publish (limit about 800 KB of code).");
   }
+  const refused = checkPublishable(files);
+  if (refused) throw new Error(refused);
   const { data, error } = await sb
     .from("published_sites")
     .upsert({ project_id: projectId, name, files, updated_at: new Date().toISOString() }, { onConflict: "project_id" })
@@ -70,4 +76,11 @@ export async function fetchPublicSite(sb: SupabaseClient, id: string): Promise<{
   }
   if (!files["/App.tsx"]) return null;
   return { name: typeof d.name === "string" ? d.name : "Site", files };
+}
+
+/** A visitor reports a published site (works without login). */
+export async function reportSite(sb: SupabaseClient, id: string, reason: string, details = ""): Promise<void> {
+  const text = (details.trim() ? reason + ": " + details.trim() : reason).slice(0, 500);
+  const { error } = await sb.rpc("report_site", { p_id: id, p_reason: text });
+  if (error) fail("send the report", error);
 }

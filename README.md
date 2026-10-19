@@ -115,3 +115,11 @@ Cloud mode only. In the left panel, "Publish site" saves the files of the curren
 and gives a public link `/s/<id>` (works without login). "Update" publishes the current version to the same link;
 "Unpublish" removes it. Visitors can only fetch ONE site by id (function `get_published_site`), there is no list of all sites.
 The site runs in the Sandpack iframe (CodeSandbox origin), not on your own domain. Run `supabase/schema.sql` again once.
+
+## Safety and moderation
+
+- Visitors can press **Report** on any public site (stored in `site_reports`).
+- Sites with a password field or a card security code (CVV) field cannot be published (`lib/publishRules.ts`); phishing pages usually look like that.
+- You decide what to take down: run the queries in `supabase/moderation.sql` by hand in the Supabase SQL Editor
+  (list reports, look at the site's code, block the project, undo a block). A blocked project disappears from its link and cannot be published again.
+- Run `supabase/schema.sql` again once to create the new tables and functions.
