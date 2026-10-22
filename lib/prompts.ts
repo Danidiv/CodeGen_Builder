@@ -48,7 +48,7 @@ const FULL_DESIGN = `- DESIGN QUALITY (important, apply to every new page or sec
   * Use realistic content (real-sounding names, prices, texts), never "Lorem ipsum" or "Item 1".
   * Interactive things must really work with React state (tabs, filters, cart, toggles, forms with a thank-you message).
   * If a DESIGN STYLE is given in the request, follow it for all NEW pages and sections; do not restyle existing parts unless asked.
-- IMAGES: you cannot create image files, and local paths like "/hero.jpg" or "./images/coffee.png" do NOT exist. Never use them. For photos use this URL pattern: https://picsum.photos/seed/WORD/800/600 (replace WORD with any single word, change it for each image, width/height as needed). For logos, icons and decoration prefer lucide-react icons, emoji, or Tailwind gradients (bg-gradient-to-br from-amber-200 to-orange-400). Always add an alt attribute.
+- IMAGES: you cannot create image files, and local paths like "/hero.jpg" do NOT exist. For EVERY photo write src="image:KEYWORDS" where KEYWORDS are 2 to 5 English words that describe exactly what the photo shows and fit the topic of the site, for example src="image:espresso coffee cup cafe", src="image:modern kitchen interior", src="image:mountain lake hiking trail", src="image:smiling woman portrait|portrait". The app replaces each placeholder with a real photo. Optional ending: |portrait for tall photos, |square for squares (default is wide). Use different keywords for different photos. Write each placeholder as one complete plain string (for example in a data array: img: "image:fresh croissant bakery"), never built from variables or joined with +. Do NOT use picsum, unsplash or any other URL. For logos, icons and decoration prefer lucide-react icons, emoji, or Tailwind gradients. Always add an alt attribute.
 `;
 
 const COMPACT_DESIGN = `- DESIGN (short): one accent colour, a big hero heading, 3 or 4 sections with different layouts, rounded-2xl cards, generous spacing (py-12, max-w-6xl mx-auto px-6), responsive grid, realistic text. If a DESIGN STYLE is given, follow it for new parts only.
@@ -103,6 +103,69 @@ document.addEventListener(
   true
 );
 
+// Photo credit: Pexels and Unsplash require a visible credit wherever their photos are shown.
+let creditTimer: ReturnType<typeof setTimeout> | undefined;
+let creditSig = "";
+function photoCredit() {
+  clearTimeout(creditTimer);
+  creditTimer = setTimeout(() => {
+    const hasPexels = !!document.querySelector('img[src*="images.pexels.com"], [style*="images.pexels.com"]');
+    const users: string[] = [];
+    document.querySelectorAll('img[src*="images.unsplash.com"]').forEach((img) => {
+      const m = /[?&]credit=([^&]+)/.exec((img as HTMLImageElement).src);
+      const u = m ? decodeURIComponent(m[1]) : "";
+      if (u && users.indexOf(u) < 0) users.push(u);
+    });
+    const hasUnsplash = !!document.querySelector('img[src*="images.unsplash.com"]');
+    const sig = (hasPexels ? "p" : "") + "|" + (hasUnsplash ? "u:" + users.join(",") : "");
+    if (sig === creditSig) return;
+    creditSig = sig;
+    document.getElementById("photo-credit")?.remove();
+    if (!hasPexels && !hasUnsplash) return;
+
+    const box = document.createElement("div");
+    box.id = "photo-credit";
+    box.setAttribute(
+      "style",
+      "position:fixed;left:12px;bottom:12px;z-index:9999;max-width:80vw;background:rgba(0,0,0,.65);color:#fff;font:12px sans-serif;padding:4px 10px;border-radius:12px"
+    );
+    const add = (text: string, href?: string) => {
+      if (!href) {
+        box.appendChild(document.createTextNode(text));
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = href;
+      a.target = "_blank";
+      a.rel = "noreferrer";
+      a.textContent = text;
+      a.setAttribute("style", "color:#fff;text-decoration:underline");
+      box.appendChild(a);
+    };
+    add("Photos: ");
+    if (hasPexels) {
+      add("Pexels", "https://www.pexels.com");
+      if (hasUnsplash) add(", ");
+    }
+    if (hasUnsplash) {
+      users.slice(0, 3).forEach((u, i) => {
+        if (i > 0) add(", ");
+        add("@" + u, "https://unsplash.com/@" + u + "?utm_source=codegen_builder&utm_medium=referral");
+      });
+      if (users.length > 3) add(" and others");
+      add(" on ");
+      add("Unsplash", "https://unsplash.com/?utm_source=codegen_builder&utm_medium=referral");
+    }
+    document.body.appendChild(box);
+  }, 300);
+}
+new MutationObserver(photoCredit).observe(document.body, {
+  childList: true,
+  subtree: true,
+  attributes: true,
+  attributeFilter: ["src", "style"],
+});
+
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
@@ -112,7 +175,7 @@ createRoot(document.getElementById("root")!).render(
 };
 
 /** System prompt for messages that are only talk (no building). Used with mode "chat". */
-export const CHAT_PROMPT = `You are the assistant inside CodeGen Builder, an app where the user describes a website or app and the AI builds it live next to this chat.
+export const CHAT_PROMPT = `You are the assistant inside NEXA AI, an app where the user describes a website or app and the AI builds it live next to this chat.
 Right now the user is only talking, not asking to build or change the project.
 - Reply briefly: 1 to 4 short sentences, friendly.
 - Answer in the same language and script the user writes in (English, Urdu, or Roman Urdu).

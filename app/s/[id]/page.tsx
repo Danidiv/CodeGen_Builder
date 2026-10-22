@@ -135,7 +135,7 @@ export default function PublishedSite() {
             Report
           </button>
           <a href="/" target="_blank" rel="noreferrer" className="rounded-full bg-black/70 px-3 py-1 text-white/80 hover:bg-black">
-            Made with CodeGen Builder
+            Made with NEXA AI
           </a>
         </div>
       </div>

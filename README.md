@@ -1,4 +1,4 @@
-# CodeGen Builder (Month 1 starter)
+# NEXA AI (Month 1 starter)
 
 A minimal "Lovable-style" app builder: describe an app in chat, Claude writes the React code, and you see a live preview.
 
@@ -130,3 +130,15 @@ The site runs in the Sandpack iframe (CodeSandbox origin), not on your own domai
 ("how do I publish?") get a short chat answer from the AI (`mode: "chat"`, no code, project untouched), and everything with
 build words or app words ("build", "add", "banao", "landing page", "dark mode") builds as before. Messages with files and
 fix requests always build. Add words to the lists in `lib/intent.ts` if a message is classified wrongly.
+
+## Matching photos
+
+The AI cannot know photo URLs, so it writes placeholders such as `src="image:espresso coffee cup cafe"` (optional `|portrait` or `|square`).
+After every answer (and when a template is loaded) the app asks `/api/images` for photos for those keywords (Pexels, `PEXELS_API_KEY`)
+and replaces each placeholder with a real URL, so the saved code, the published site and the ZIP contain normal image links.
+If there is no key or no result, neutral placeholder photos are used, so nothing breaks.
+Pexels asks for a visible link to Pexels: `/index.tsx` adds a small "Photos from Pexels" badge automatically while Pexels photos are on the page.
+Pexels allows 200 requests per hour; answers are cached on the server for 6 hours.
+Unsplash (`UNSPLASH_ACCESS_KEY`) works as a second source: photos are used directly, the photographer and Unsplash are credited in the
+same badge, and each used photo is reported to Unsplash's download endpoint (their rule). Demo mode = 50 requests per hour.
+Pixabay is not supported on purpose: its rules forbid permanent hotlinking of its image URLs (images must be downloaded and hosted by you).

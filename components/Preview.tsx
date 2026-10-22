@@ -28,7 +28,44 @@ type Props = {
   settledTick?: number;
   /** Called (debounced) when the user typed in the Code tab; gets the complete file set. */
   onFilesEdit?: (files: Record<string, string>) => void;
+  /** Which view is shown (controlled by the top bar). */
+  tab?: "preview" | "code";
+  /** Width of the preview frame. */
+  device?: "desktop" | "tablet" | "mobile";
+  /** Goes up when the user presses "Reload preview" in the toolbar. */
+  reloadSignal?: number;
+  /** True while the project is still the empty starter: a skeleton is shown during generation. */
+  blank?: boolean;
 };
+
+const DEVICE_WIDTH = { desktop: "100%", tablet: "768px", mobile: "390px" } as const;
+
+/** Placeholder shown in the preview area while the AI is writing the first version. */
+function PreviewSkeleton() {
+  return (
+    <div className="absolute inset-0 z-10 space-y-6 overflow-hidden bg-app p-6" role="status" aria-label="Generating preview">
+      <div className="flex items-center gap-4">
+        <div className="shimmer h-8 w-8 rounded-btn" />
+        <div className="shimmer h-4 w-24 rounded-btn" />
+        <div className="ml-auto flex gap-3">
+          <div className="shimmer h-4 w-12 rounded-btn" />
+          <div className="shimmer h-4 w-12 rounded-btn" />
+          <div className="shimmer h-4 w-12 rounded-btn" />
+        </div>
+      </div>
+      <div className="shimmer h-48 rounded-card" />
+      <div className="space-y-2">
+        <div className="shimmer h-6 w-2/3 rounded-btn" />
+        <div className="shimmer h-4 w-1/2 rounded-btn" />
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="shimmer h-32 rounded-card" />
+        <div className="shimmer h-32 rounded-card" />
+        <div className="shimmer h-32 rounded-card" />
+      </div>
+    </div>
+  );
+}
 
 /** Small stable hash, so the preview restarts exactly when the files change. */
 function hashFiles(files: Record<string, string>): string {
@@ -151,14 +188,14 @@ function PreviewStatus({
   if (timedOut || elapsed >= SHOW_HELP_AFTER) {
     const info = describeStall(elapsed, probe, timedOut);
     return (
-      <div className="absolute inset-x-3 bottom-3 z-10 rounded-lg border border-white/10 bg-[#11141b]/95 p-4 text-sm shadow-xl">
+      <div className="absolute inset-x-3 bottom-3 z-10 rounded-card border border-line bg-panel/95 p-4 text-sm shadow-xl">
         <p className="font-medium text-white">{info.headline}</p>
         <ul className="mt-2 space-y-1 text-white/70">
           {info.lines.map((l, i) => (
             <li key={i}>{l}</li>
           ))}
         </ul>
-        <button onClick={onReload} className="mt-3 rounded-md bg-indigo-600 px-3 py-1.5 text-white hover:bg-indigo-500">
+        <button onClick={onReload} className="btn btn-primary mt-3">
           Reload preview
         </button>
       </div>
@@ -172,8 +209,7 @@ function PreviewStatus({
   );
 }
 
-export default function Preview({ files, onError, busy = false, onFilesEdit }: Props) {
-  const [tab, setTab] = useState<"preview" | "code">("preview");
+export default function Preview({ files, onError, busy = false, onFilesEdit, tab = "preview", device = "desktop", reloadSignal = 0, blank = false }: Props) {
   // Bumping this restarts the preview.
   const [reloadKey, setReloadKey] = useState(0);
   const autoReloads = useRef(0);
@@ -205,32 +241,15 @@ export default function Preview({ files, onError, busy = false, onFilesEdit }: P
   };
   const stableReload = useRef(() => reload.current()).current;
 
+  // "Reload preview" button in the toolbar.
+  useEffect(() => {
+    if (reloadSignal === 0) return;
+    autoReloads.current = 0;
+    stableReload();
+  }, [reloadSignal, stableReload]);
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex gap-1 border-b border-white/10 p-2">
-        {(["preview", "code"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`rounded-md px-3 py-1 text-sm capitalize ${
-              tab === t ? "bg-white/10 text-white" : "text-white/60 hover:text-white"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-        <button
-          onClick={() => {
-            autoReloads.current = 0;
-            stableReload();
-          }}
-          className="ml-auto rounded-md border border-white/10 px-3 py-1 text-xs text-white/70 hover:bg-white/5"
-          title="Restart the preview (try this if it stays blank or shows 'Couldn't connect to server')"
-        >
-          Reload preview
-        </button>
-      </div>
-
       <div className="relative min-h-0 flex-1">
         <SandpackProvider
           // New key = a clean restart: new files, new packages or the Reload button.
@@ -250,7 +269,21 @@ export default function Preview({ files, onError, busy = false, onFilesEdit }: P
           <EditSync base={files} onEdit={onFilesEdit} lastEmitted={lastEmitted} busy={busy} />
           <PreviewStatus onReload={stableReload} busy={busy} autoReloads={autoReloads} />
           {/* Both views stay mounted; we only hide one. */}
-          <div style={{ position: "absolute", inset: 0, display: tab === "preview" ? "block" : "none" }}>
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: 0,
+              right: 0,
+              margin: "0 auto",
+              width: DEVICE_WIDTH[device],
+              maxWidth: "100%",
+              display: tab === "preview" ? "block" : "none",
+              transition: "width 200ms ease",
+              ...(device === "desktop" ? {} : { borderLeft: "1px solid rgba(255,255,255,0.08)", borderRight: "1px solid rgba(255,255,255,0.08)" }),
+            }}
+          >
             <SandpackLayout style={{ height: "100%", border: 0, borderRadius: 0 }}>
               <SandpackPreview showNavigator={false} showOpenInCodeSandbox={false} style={{ height: "100%" }} />
             </SandpackLayout>
@@ -262,6 +295,7 @@ export default function Preview({ files, onError, busy = false, onFilesEdit }: P
             </SandpackLayout>
           </div>
         </SandpackProvider>
+        {busy && blank && tab === "preview" && <PreviewSkeleton />}
       </div>
     </div>
   );

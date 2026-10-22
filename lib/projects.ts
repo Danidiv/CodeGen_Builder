@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { UiMessage } from "@/components/Chat";
 import type { Version } from "@/lib/versions";
+import { computeThumb, type Thumb } from "@/lib/thumb";
 
-export type ProjectMeta = { id: string; name: string; updated_at: string };
+export type ProjectMeta = { id: string; name: string; updated_at: string; thumb?: Thumb | null };
 
 /** Everything stored in the `data` column of a project row. */
 export type ProjectData = {
@@ -22,6 +23,13 @@ function fail(action: string, error: { message: string }): never {
 
 /** All projects of the signed-in user, newest first (without the heavy data). */
 export async function listProjects(sb: SupabaseClient): Promise<ProjectMeta[]> {
+  // Also ask for the small picture (data->thumb); if that query is not accepted, load without it.
+  const withThumb = await sb
+    .from("projects")
+    .select(`${META_COLUMNS}, thumb:data->thumb`)
+    .order("updated_at", { ascending: false });
+  if (!withThumb.error) return (withThumb.data ?? []) as unknown as ProjectMeta[];
+
   const { data, error } = await sb
     .from("projects")
     .select(META_COLUMNS)
@@ -53,7 +61,7 @@ export async function createProject(
 ): Promise<ProjectMeta> {
   const { data: row, error } = await sb
     .from("projects")
-    .insert({ name, data })
+    .insert({ name, data: { ...data, thumb: computeThumb(data.files) } })
     .select(META_COLUMNS)
     .single();
   if (error) fail("create the project", error);
@@ -66,8 +74,14 @@ export async function saveProject(
   name: string,
   data: ProjectData
 ): Promise<void> {
-  const { error } = await sb.from("projects").update({ name, data }).eq("id", id);
+  const { error } = await sb.from("projects").update({ name, data: { ...data, thumb: computeThumb(data.files) } }).eq("id", id);
   if (error) fail("save the project", error);
+}
+
+/** Changes only the name of a project. */
+export async function renameProject(sb: SupabaseClient, id: string, name: string): Promise<void> {
+  const { error } = await sb.from("projects").update({ name }).eq("id", id);
+  if (error) fail("rename the project", error);
 }
 
 export async function deleteProject(sb: SupabaseClient, id: string): Promise<void> {

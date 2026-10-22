@@ -4,9 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Chat, { UiMessage } from "@/components/Chat";
 import Preview from "@/components/Preview";
-import Toolbar from "@/components/Toolbar";
+import Toolbar, { type Device } from "@/components/Toolbar";
+import Header, { type Tab } from "@/components/Header";
+import HistoryDrawer from "@/components/HistoryDrawer";
+import EmptyState from "@/components/EmptyState";
+import { THEMES, THEME_KEY, themeBg } from "@/components/themes";
+import { computeThumb } from "@/lib/thumb";
+import { AlertCircle, MessageSquare, Monitor, Wrench } from "lucide-react";
 import AuthForm from "@/components/AuthForm";
-import ProjectsBar, { SaveState } from "@/components/ProjectsBar";
+import ProjectsBar, { LocalName, SaveState } from "@/components/ProjectsBar";
 import { DEFAULT_FILES } from "@/lib/prompts";
 import { parseFiles } from "@/lib/parseFiles";
 import { EmptyReason, interpretResponse } from "@/lib/interpret";
@@ -15,6 +21,7 @@ import { ERROR_MARKER } from "@/lib/protocol";
 import { downloadProjectZip } from "@/lib/zip";
 import { getStyle } from "@/lib/styles";
 import { classifyIntent, smallTalkReply } from "@/lib/intent";
+import { hasImageRefs, resolveImages, type Fetcher } from "@/lib/imageRefs";
 import PublishBar from "@/components/PublishBar";
 import type { Attachment } from "@/lib/attachments";
 import { TEMPLATES, getTemplate } from "@/lib/templates";
@@ -28,6 +35,7 @@ import {
   createProject,
   deleteProject,
   deriveName,
+  renameProject,
   listProjects,
   loadProject,
   saveProject,
@@ -37,6 +45,10 @@ import {
 const STORAGE_KEY = "codegen-project-v1";
 const MAX_AUTO_FIXES = 2;
 const AUTO_FIX_DELAY_MS = 2500;
+const CHAT_DEFAULT_W = 400;
+const CHAT_MIN_W = 300;
+const CHAT_WIDTH_KEY = "codegen-chat-w";
+const NAME_KEY = "codegen-name";
 
 // Shown when even the second try gave nothing usable (nothing was changed).
 const EMPTY_WARNINGS: Record<EmptyReason, string> = {
@@ -114,6 +126,20 @@ export default function Home() {
   const attachRef = useRef<Attachment[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
+  // UI-only state (layout, view, drawers).
+  const [tab, setTab] = useState<Tab>("preview");
+  const [device, setDevice] = useState<Device>("desktop");
+  const [fullscreen, setFullscreen] = useState(false);
+  const [reloadSignal, setReloadSignal] = useState(0);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState<"chat" | "preview">("chat");
+  const [chatWidth, setChatWidth] = useState(CHAT_DEFAULT_W);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [bgTheme, setBgTheme] = useState("aurora");
+  // "home" = start page with all projects; "project" = the editor.
+  const [view, setView] = useState<"home" | "project">("project");
+  const [pending, setPending] = useState<{ text: string; files: Attachment[] } | null>(null);
+
   // Cloud (Supabase) state. Without Supabase config none of this is used and the
   // app works in "local mode" (no login, project kept in this browser).
   const cloud = supabase !== null;
@@ -145,6 +171,96 @@ export default function Home() {
   const handlePreviewError = useCallback((message: string | null) => {
     setPreviewError(message ? cleanError(message) : null);
   }, []);
+
+  // Remember the chat panel width.
+  useEffect(() => {
+    try {
+      const w = Number(localStorage.getItem(CHAT_WIDTH_KEY));
+      if (w >= CHAT_MIN_W && w <= 900) setChatWidth(w);
+      const bgSaved = localStorage.getItem(THEME_KEY);
+      if (bgSaved && THEMES.some((t) => t.id === bgSaved)) setBgTheme(bgSaved);
+      if (!supabase) {
+        const n = localStorage.getItem(NAME_KEY);
+        if (n) setProjectName(n);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Esc leaves fullscreen.
+  useEffect(() => {
+    if (!fullscreen) return;
+    function key(e: KeyboardEvent) {
+      if (e.key === "Escape") setFullscreen(false);
+    }
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [fullscreen]);
+
+  function changeBgTheme(id: string) {
+    setBgTheme(id);
+    try {
+      localStorage.setItem(THEME_KEY, id);
+    } catch {
+      // ignore
+    }
+  }
+
+  function clampChatWidth(w: number): number {
+    const total = rowRef.current?.clientWidth ?? 1200;
+    return Math.round(Math.min(Math.max(w, CHAT_MIN_W), Math.max(CHAT_MIN_W, Math.min(720, total - 360))));
+  }
+
+  function startResize(e: React.PointerEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    const left = rowRef.current?.getBoundingClientRect().left ?? 0;
+    let last = chatWidth;
+    const move = (ev: PointerEvent) => {
+      last = clampChatWidth(ev.clientX - left);
+      setChatWidth(last);
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      try {
+        localStorage.setItem(CHAT_WIDTH_KEY, String(last));
+      } catch {
+        // ignore
+      }
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  }
+
+  function resizeByKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const next = clampChatWidth(chatWidth + (e.key === "ArrowRight" ? 16 : -16));
+    setChatWidth(next);
+    try {
+      localStorage.setItem(CHAT_WIDTH_KEY, String(next));
+    } catch {
+      // ignore
+    }
+  }
+
+  // A prompt typed on the start page while another project was open: it waits here until the
+  // new blank project is on screen, then it is sent (so the old project is never touched).
+  useEffect(() => {
+    if (!pending || loading) return;
+    const blank = messages.length === 0 && files["/App.tsx"] === DEFAULT_FILES["/App.tsx"];
+    const task = pending;
+    setPending(null);
+    if (!blank) return; // the new project could not be created
+    setView("project");
+    handleSend(task.text, undefined, [], task.files);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending]);
 
   // Remember the chosen design style.
   useEffect(() => {
@@ -350,7 +466,9 @@ export default function Home() {
         await saveProject(sb, id, name, data);
         lastSavedRef.current = serialized;
         setProjects((list) =>
-          list.map((p) => (p.id === id ? { ...p, name, updated_at: new Date().toISOString() } : p))
+          list.map((p) =>
+            p.id === id ? { ...p, name, updated_at: new Date().toISOString(), thumb: computeThumb(files) } : p
+          )
         );
         if (projectIdRef.current === id) {
           if (name !== projectName) setProjectName(name);
@@ -485,6 +603,33 @@ export default function Home() {
     };
   }, [cloud, accessToken]);
 
+  // Rename the open project (saved to the database in cloud mode, to this browser in local mode).
+  async function handleRename(name: string) {
+    const clean = name.trim().slice(0, 60);
+    if (!clean) return;
+    const sb = supabase;
+    if (!sb || !projectId) {
+      setProjectName(clean);
+      try {
+        localStorage.setItem(NAME_KEY, clean);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    const id = projectId;
+    const old = projectName;
+    setProjectName(clean);
+    setProjects((list) => list.map((p) => (p.id === id ? { ...p, name: clean } : p)));
+    try {
+      await renameProject(sb, id, clean);
+    } catch (err) {
+      setProjectName(old);
+      setProjects((list) => list.map((p) => (p.id === id ? { ...p, name: old } : p)));
+      setCloudError(errMsg(err));
+    }
+  }
+
   async function handleNewProject() {
     if (loading) return;
 
@@ -509,8 +654,35 @@ export default function Home() {
     setMessages([]);
     setHistory(initialHistory());
     setPreviewError(null);
+    setProjectName(DEFAULT_PROJECT_NAME);
+    try {
+      localStorage.removeItem(NAME_KEY);
+    } catch {
+      // ignore
+    }
     attemptsRef.current = 0;
     armedRef.current = false;
+  }
+
+  // Start page: open a project from the list.
+  async function openFromHome(id: string) {
+    if (id !== projectId) await handleOpenProject(id);
+    setView("project");
+  }
+
+  // Start page: a prompt always starts a NEW project when another one is open.
+  async function sendFromHome(text: string, f: Attachment[]) {
+    if (isEmptyNow()) {
+      setView("project");
+      handleSend(text, undefined, messages, f);
+      return;
+    }
+    await handleNewProject();
+    setPending({ text, files: f });
+  }
+
+  function isEmptyNow(): boolean {
+    return messages.length === 0 && files["/App.tsx"] === DEFAULT_FILES["/App.tsx"];
   }
 
   async function handleDownload() {
@@ -617,7 +789,7 @@ export default function Home() {
   }
 
   /** Loads a ready-made template as the current app (undo is possible in History). */
-  function handleTemplate(id: string) {
+  async function handleTemplate(id: string) {
     if (loading) return;
     const tpl = getTemplate(id);
     if (!tpl) return;
@@ -625,7 +797,15 @@ export default function Home() {
     if (!isFresh && !window.confirm("Replace the current app with the " + tpl.name + " template? You can undo it in History.")) {
       return;
     }
-    const next = withLatestIndex({ ...DEFAULT_FILES, ...tpl.files });
+    setLoading(true); // blocks other actions while the photos are being found
+    let withReal = tpl.files;
+    try {
+      withReal = await withPhotos(tpl.files);
+    } finally {
+      setLoading(false);
+      setStatus(null);
+    }
+    const next = withLatestIndex({ ...DEFAULT_FILES, ...withReal });
     setFiles(next);
     pushVersion("Template: " + tpl.name, next);
     setMessages((m) => [
@@ -639,6 +819,33 @@ export default function Home() {
     setSettledTick((n) => n + 1);
     attemptsRef.current = 0;
     armedRef.current = false;
+  }
+
+  /** Asks the server for real photos for keywords (Pexels). Empty list = none found (placeholders are used). */
+  const fetchPhotos: Fetcher = async (query, orientation, count) => {
+    const headers: Record<string, string> = {};
+    if (supabase) {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) headers.Authorization = `Bearer ${data.session.access_token}`;
+    }
+    const res = await fetch(
+      `/api/images?q=${encodeURIComponent(query)}&o=${orientation}&count=${count}`,
+      { headers }
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as { urls?: string[] };
+    return Array.isArray(data.urls) ? data.urls : [];
+  };
+
+  /** Replaces "image:keywords" placeholders in the given files by real photo URLs. */
+  async function withPhotos(changed: Files): Promise<Files> {
+    if (!hasImageRefs(changed)) return changed;
+    setStatus("Finding photos...");
+    try {
+      return (await resolveImages(changed, fetchPhotos)).files;
+    } catch {
+      return changed;
+    }
   }
 
   /** The user only talks (no build request): answer in the chat, never touch the project. */
@@ -784,7 +991,7 @@ export default function Home() {
       let kind: UiMessage["kind"];
       const applied = Object.keys(result.files).length > 0;
       if (applied) {
-        const nextFiles = { ...baseFiles, ...result.files };
+        const nextFiles = { ...baseFiles, ...(await withPhotos(result.files)) };
         setFiles(nextFiles);
         pushVersion(versionLabel ?? (text.length > 48 ? text.slice(0, 48) + "..." : text), nextFiles);
         reply = reply || "Done. Check the preview.";
@@ -852,22 +1059,18 @@ export default function Home() {
       <div className="flex h-screen flex-col items-center justify-center gap-3 p-4 text-center text-sm">
         {cloudError ? (
           <>
-            <p className="max-w-md rounded-md bg-red-950/70 px-3 py-2 text-red-200">{cloudError}</p>
+            <p className="flex max-w-md items-start gap-2 rounded-btn bg-red-950/70 px-3 py-2 text-left text-red-200">
+              <AlertCircle size={16} className="mt-0.5 shrink-0" /> {cloudError}
+            </p>
             <p className="max-w-md text-white/60">
               If this says the table does not exist, run <code>supabase/schema.sql</code> in the Supabase SQL
               Editor first.
             </p>
             <div className="flex gap-2">
-              <button
-                onClick={() => window.location.reload()}
-                className="rounded-md bg-indigo-600 px-3 py-1.5 text-white hover:bg-indigo-500"
-              >
+              <button onClick={() => window.location.reload()} className="btn btn-primary">
                 Try again
               </button>
-              <button
-                onClick={() => supabase?.auth.signOut()}
-                className="rounded-md border border-white/10 px-3 py-1.5 text-white/80 hover:bg-white/5"
-              >
+              <button onClick={() => supabase?.auth.signOut()} className="btn">
                 Sign out
               </button>
             </div>
@@ -879,88 +1082,186 @@ export default function Home() {
     );
   }
 
+  // No project yet: big prompt box + starting cards instead of the two panels.
+  const isEmpty = messages.length === 0 && files["/App.tsx"] === DEFAULT_FILES["/App.tsx"];
+  const showHome = isEmpty || view === "home";
+  const email = session?.user.email ?? null;
+
   return (
-    <main className="flex h-screen">
-      <section className="flex w-[380px] shrink-0 flex-col border-r border-white/10">
-        <header className="flex items-center justify-between border-b border-white/10 px-4 py-3 text-sm">
-          <span className="font-semibold">CodeGen Builder</span>
-          {usage && usage.limit > 0 && (
-            <span
-              className={`ml-auto mr-2 text-xs ${usage.used >= usage.limit ? "text-red-300" : "text-white/50"}`}
-              title="AI requests used today (resets at 05:00 Pakistan time)"
-            >
-              Today: {usage.used}/{usage.limit}
-            </span>
-          )}
-          {!cloud && (
-            <button
-              onClick={handleNewProject}
+    <main className="flex h-screen flex-col overflow-hidden bg-app">
+      <Header
+        projectSlot={
+          cloud ? (
+            <ProjectsBar
+              projects={projects}
+              currentId={projectId}
+              currentName={projectName}
+              saveState={saveState}
+              email={email ?? ""}
               disabled={loading}
-              className="rounded-md border border-white/10 px-2 py-1 text-xs text-white/70 hover:bg-white/5 disabled:opacity-40"
-            >
-              New project
-            </button>
-          )}
-        </header>
-        {cloud && (
-          <ProjectsBar
-            projects={projects}
-            currentId={projectId}
-            currentName={projectName}
-            saveState={saveState}
-            email={session?.user.email ?? ""}
-            disabled={loading}
-            onOpen={handleOpenProject}
-            onNew={handleNewProject}
-            onDelete={handleDeleteProject}
-            onSignOut={handleSignOut}
-          />
-        )}
-        {cloud && cloudError && (
-          <p className="border-b border-white/10 bg-red-950/70 px-3 py-2 text-xs text-red-200">{cloudError}</p>
-        )}
-        <Toolbar
-          versions={history.versions}
-          active={history.active}
-          disabled={loading}
-          autoFix={autoFix}
-          onUndo={() => restoreVersion(history.active - 1)}
-          onRedo={() => restoreVersion(history.active + 1)}
-          onRestore={restoreVersion}
-          onDownload={handleDownload}
-          onToggleAutoFix={setAutoFix}
+              onOpen={(id) => void openFromHome(id)}
+              onNew={handleNewProject}
+              onDelete={handleDeleteProject}
+              onRename={handleRename}
+            />
+          ) : (
+            <LocalName name={projectName} onRename={handleRename} disabled={loading} />
+          )
+        }
+        showTools={!showHome}
+        tab={tab}
+        onTab={(t) => {
+          setTab(t);
+          setMobileTab("preview");
+        }}
+        publishSlot={
+          supabase && projectId ? (
+            <PublishBar sb={supabase} projectId={projectId} name={projectName} files={files} disabled={loading} />
+          ) : null
+        }
+        email={email}
+        usage={usage}
+        disabled={loading}
+        onNew={cloud ? undefined : handleNewProject}
+        onSignOut={cloud ? handleSignOut : undefined}
+        onHome={cloud && !showHome ? () => setView("home") : undefined}
+        bgTheme={bgTheme}
+        onBgTheme={changeBgTheme}
+      />
+      {cloud && cloudError && (
+        <p className="flex items-center gap-2 border-b border-line bg-red-950/70 px-4 py-2 text-xs text-red-200">
+          <AlertCircle size={14} className="shrink-0" /> {cloudError}
+        </p>
+      )}
+
+      {showHome ? (
+        <EmptyState
+          loading={loading}
+          onSend={(text, f) => void sendFromHome(text, f ?? [])}
+          onStop={handleStop}
+          styleId={styleId}
+          onStyle={changeStyle}
+          projects={
+            cloud
+              ? projects.filter((x) => x.name !== DEFAULT_PROJECT_NAME || (x.id === projectId && !isEmpty))
+              : []
+          }
+          onOpenProject={(id) => void openFromHome(id)}
+          onDeleteProject={handleDeleteProject}
+          bg={themeBg(bgTheme)}
         />
-        {supabase && projectId && (
-          <PublishBar sb={supabase} projectId={projectId} name={projectName} files={files} disabled={loading} />
-        )}
-        <div className="min-h-0 flex-1">
-          <Chat
-            messages={messages}
-            loading={loading}
-            status={status}
-            onSend={(text, files) => handleSend(text, undefined, messages, files ?? [])}
-            onStop={handleStop}
-            onRetry={handleRetry}
-            onTemplate={handleTemplate}
-            styleId={styleId}
-            onStyle={changeStyle}
-          />
-        </div>
-      </section>
-      <section className="relative min-w-0 flex-1">
-        <Preview files={files} onError={handlePreviewError} busy={loading} settledTick={settledTick} onFilesEdit={handleManualEdit} />
-        {previewError && !loading && (
-          <div className="absolute inset-x-3 bottom-3 flex items-start gap-3 rounded-lg border border-red-400/30 bg-red-950/90 p-3 text-sm shadow-lg">
-            <p className="line-clamp-3 flex-1 whitespace-pre-wrap text-red-100">{previewError}</p>
-            <button
-              onClick={() => runFix(false)}
-              className="shrink-0 rounded-md bg-red-500 px-3 py-1.5 font-medium text-white hover:bg-red-400"
+      ) : (
+        <>
+          <div ref={rowRef} className="flex min-h-0 flex-1">
+            <section
+              aria-label="Chat"
+              style={{ "--chat-w": `${chatWidth}px` } as React.CSSProperties}
+              className={`${mobileTab === "chat" ? "flex" : "hidden"} min-h-0 w-full shrink-0 flex-col md:flex md:w-[var(--chat-w)]`}
             >
-              Fix with AI
-            </button>
+              <Chat
+                messages={messages}
+                loading={loading}
+                status={status}
+                onSend={(text, f) => handleSend(text, undefined, messages, f ?? [])}
+                onStop={handleStop}
+                onRetry={handleRetry}
+                onTemplate={handleTemplate}
+                styleId={styleId}
+                onStyle={changeStyle}
+              />
+            </section>
+
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize chat and preview (drag, or use the arrow keys)"
+              aria-valuenow={chatWidth}
+              tabIndex={0}
+              onPointerDown={startResize}
+              onKeyDown={resizeByKey}
+              onDoubleClick={() => setChatWidth(CHAT_DEFAULT_W)}
+              className="hidden w-1 shrink-0 cursor-col-resize touch-none bg-line transition-colors hover:bg-white/20 active:bg-indigo-400/60 focus-visible:bg-indigo-400/60 focus-visible:outline-none md:block"
+            />
+
+            <section
+              aria-label="Preview"
+              className={
+                fullscreen
+                  ? "fixed inset-0 z-50 flex flex-col bg-app"
+                  : `${mobileTab === "preview" ? "flex" : "hidden"} min-w-0 flex-1 flex-col md:flex`
+              }
+            >
+              <Toolbar
+                count={history.versions.length}
+                active={history.active}
+                disabled={loading}
+                device={device}
+                showDevices={tab === "preview"}
+                fullscreen={fullscreen}
+                onUndo={() => restoreVersion(history.active - 1)}
+                onRedo={() => restoreVersion(history.active + 1)}
+                onOpenHistory={() => setHistoryOpen(true)}
+                onDownload={handleDownload}
+                onDevice={setDevice}
+                onReload={() => setReloadSignal((n) => n + 1)}
+                onToggleFullscreen={() => setFullscreen((f) => !f)}
+              />
+              <div className="relative min-h-0 flex-1">
+                <Preview
+                  files={files}
+                  onError={handlePreviewError}
+                  busy={loading}
+                  settledTick={settledTick}
+                  onFilesEdit={handleManualEdit}
+                  tab={tab}
+                  device={device}
+                  reloadSignal={reloadSignal}
+                  blank={files["/App.tsx"] === DEFAULT_FILES["/App.tsx"]}
+                />
+                {previewError && !loading && (
+                  <div className="absolute inset-x-3 bottom-3 z-20 flex items-start gap-3 rounded-card border border-red-400/30 bg-red-950/90 p-3 text-sm shadow-lg">
+                    <AlertCircle size={16} className="mt-0.5 shrink-0 text-red-300" />
+                    <p className="line-clamp-3 flex-1 whitespace-pre-wrap text-red-100">{previewError}</p>
+                    <button onClick={() => runFix(false)} className="btn btn-danger shrink-0">
+                      <Wrench size={14} /> Fix with AI
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
           </div>
-        )}
-      </section>
+
+          <nav aria-label="Switch panel" className="grid shrink-0 grid-cols-2 border-t border-line bg-panel md:hidden">
+            {(
+              [
+                { id: "chat", label: "Chat", Icon: MessageSquare },
+                { id: "preview", label: "Preview", Icon: Monitor },
+              ] as const
+            ).map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={mobileTab === id}
+                onClick={() => setMobileTab(id)}
+                className={`flex h-12 items-center justify-center gap-2 text-sm transition-colors active:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400/70 ${
+                  mobileTab === id ? "text-white" : "text-white/50 hover:text-white"
+                }`}
+              >
+                <Icon size={16} /> {label}
+              </button>
+            ))}
+          </nav>
+        </>
+      )}
+
+      <HistoryDrawer
+        open={historyOpen}
+        versions={history.versions}
+        active={history.active}
+        disabled={loading}
+        onRestore={restoreVersion}
+        onClose={() => setHistoryOpen(false)}
+      />
     </main>
   );
 }

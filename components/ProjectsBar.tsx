@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Check, ChevronDown, Loader2, Pencil, Plus, Trash2, AlertCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { ProjectMeta } from "@/lib/projects";
+import { IconButton, useDismiss } from "./ui";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -15,100 +17,179 @@ type Props = {
   onOpen: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
-  onSignOut: () => void;
+  onRename: (name: string) => void;
 };
-
-const BTN =
-  "rounded-md border border-white/10 px-2 py-1 text-xs text-white/80 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
-
-function saveLabel(state: SaveState): { text: string; className: string } {
-  switch (state) {
-    case "saving":
-      return { text: "Saving...", className: "text-white/50" };
-    case "saved":
-      return { text: "Saved", className: "text-emerald-300" };
-    case "error":
-      return { text: "Not saved! Check your connection", className: "text-red-300" };
-    default:
-      return { text: "", className: "" };
-  }
-}
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return isNaN(d.getTime()) ? "" : d.toLocaleDateString([], { day: "numeric", month: "short" });
 }
 
-export default function ProjectsBar({
-  projects,
-  currentId,
-  currentName,
-  saveState,
-  email,
-  disabled,
-  onOpen,
-  onNew,
-  onDelete,
-  onSignOut,
-}: Props) {
+/** Save indicator (icon + short text). */
+export function SaveBadge({ state }: { state: SaveState }) {
+  if (state === "saving")
+    return (
+      <span className="flex items-center gap-1 text-xs text-white/50">
+        <Loader2 size={12} className="animate-spin" /> Saving
+      </span>
+    );
+  if (state === "saved")
+    return (
+      <span className="flex items-center gap-1 text-xs text-emerald-300">
+        <Check size={12} /> Saved
+      </span>
+    );
+  if (state === "error")
+    return (
+      <span className="flex items-center gap-1 text-xs text-red-300" title="Not saved! Check your connection">
+        <AlertCircle size={12} /> Not saved
+      </span>
+    );
+  return null;
+}
+
+/** Name field: Enter or leaving the field saves, Esc cancels. */
+export function NameEditor({ name, onSave, onCancel }: { name: string; onSave: (n: string) => void; onCancel: () => void }) {
+  const [value, setValue] = useState(name);
+  const ref = useRef<HTMLInputElement>(null);
+  const done = useRef(false);
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+  function finish(save: boolean) {
+    if (done.current) return;
+    done.current = true;
+    const v = value.trim().slice(0, 60);
+    if (save && v && v !== name) onSave(v);
+    else onCancel();
+  }
+  return (
+    <input
+      ref={ref}
+      value={value}
+      maxLength={60}
+      aria-label="Project name"
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => finish(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") finish(true);
+        if (e.key === "Escape") finish(false);
+      }}
+      className="input h-8 w-[200px] max-w-full py-1"
+    />
+  );
+}
+
+/** Local mode (no login): just the name, with rename. */
+export function LocalName({ name, onRename, disabled }: { name: string; onRename: (n: string) => void; disabled: boolean }) {
+  const [editing, setEditing] = useState(false);
+  if (editing)
+    return (
+      <NameEditor
+        name={name}
+        onSave={(n) => {
+          onRename(n);
+          setEditing(false);
+        }}
+        onCancel={() => setEditing(false)}
+      />
+    );
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      <span className="truncate px-2 text-sm text-white">{name}</span>
+      <IconButton label="Rename project" disabled={disabled} onClick={() => setEditing(true)}>
+        <Pencil size={14} />
+      </IconButton>
+    </div>
+  );
+}
+
+/** Project name in the top bar; in cloud mode it opens the project list. */
+export default function ProjectsBar({ projects, currentId, currentName, saveState, email, disabled, onOpen, onNew, onDelete, onRename }: Props) {
   const [open, setOpen] = useState(false);
-  const save = saveLabel(saveState);
+  const [editing, setEditing] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useDismiss(box, open, () => setOpen(false));
 
   return (
-    <div className="relative border-b border-white/10 px-3 py-2">
-      <div className="flex items-center gap-1.5">
-        <button
-          className={`${BTN} min-w-0 flex-1 truncate text-left`}
-          disabled={disabled}
-          onClick={() => setOpen((o) => !o)}
-          title="Switch project"
-        >
-          <span className="truncate">{currentName}</span> <span className="text-white/40">v</span>
-        </button>
-        <button className={BTN} disabled={disabled} onClick={onNew} title="Start a new project">
-          + New
-        </button>
-        <button className={BTN} disabled={disabled} onClick={onSignOut} title={`Signed in as ${email}`}>
-          Sign out
-        </button>
-      </div>
-      <div className="mt-1 h-4 text-xs">
-        <span className={save.className}>{save.text}</span>
-      </div>
+    <div ref={box} className="relative flex min-w-0 items-center gap-2">
+      {editing ? (
+        <NameEditor
+          name={currentName}
+          onSave={(n) => {
+            onRename(n);
+            setEditing(false);
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : (
+        <>
+          <button
+            type="button"
+            className="btn btn-ghost min-w-0 max-w-[200px] px-2 text-white"
+            disabled={disabled}
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            title="Switch project"
+          >
+            <span className="truncate">{currentName}</span>
+            <ChevronDown size={14} className="shrink-0 text-white/50" />
+          </button>
+          <IconButton label="Rename project" disabled={disabled || !currentId} onClick={() => setEditing(true)}>
+            <Pencil size={14} />
+          </IconButton>
+        </>
+      )}
+      <span className="hidden sm:block">
+        <SaveBadge state={saveState} />
+      </span>
 
       {open && (
-        <div className="absolute inset-x-3 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-lg border border-white/10 bg-[#12151c] p-1 shadow-xl">
-          <p className="px-2 py-1 text-[11px] text-white/40">Signed in as {email}</p>
-          {projects.length === 0 && <p className="px-2 py-2 text-xs text-white/60">No projects yet.</p>}
-          {projects.map((p) => (
-            <div
-              key={p.id}
-              className={`flex items-center gap-1 rounded-md hover:bg-white/5 ${
-                p.id === currentId ? "bg-indigo-600/30" : ""
-              }`}
+        <div className="menu absolute left-0 top-full z-50 mt-1 w-[280px]">
+          <p className="px-2 py-1 text-xs text-white/40">Signed in as {email}</p>
+          <div className="max-h-72 overflow-y-auto">
+            {projects.length === 0 && <p className="px-2 py-2 text-xs text-white/60">No projects yet.</p>}
+            {projects.map((p) => (
+              <div key={p.id} className={`group flex items-center gap-1 rounded-btn ${p.id === currentId ? "bg-white/10" : ""}`}>
+                <button
+                  type="button"
+                  className="menu-item min-w-0 flex-1 justify-between"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpen(p.id);
+                  }}
+                >
+                  <span className="truncate">{p.name}</span>
+                  <span className="shrink-0 text-xs text-white/40">{formatDate(p.updated_at)}</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Delete ${p.name}`}
+                  data-tip="Delete project"
+                  className="icon-btn tip tip-right h-8 w-8 shrink-0 hover:text-red-300"
+                  onClick={() => {
+                    setOpen(false);
+                    onDelete(p.id);
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-1 border-t border-line pt-1">
+            <button
+              type="button"
+              className="menu-item"
+              onClick={() => {
+                setOpen(false);
+                onNew();
+              }}
             >
-              <button
-                className="flex min-w-0 flex-1 items-center justify-between gap-2 px-2 py-1.5 text-left text-xs text-white/90"
-                onClick={() => {
-                  setOpen(false);
-                  onOpen(p.id);
-                }}
-              >
-                <span className="truncate">{p.name}</span>
-                <span className="shrink-0 text-white/40">{formatDate(p.updated_at)}</span>
-              </button>
-              <button
-                className="shrink-0 rounded px-2 py-1 text-xs text-white/40 hover:bg-red-950/60 hover:text-red-300"
-                title="Delete project"
-                onClick={() => {
-                  setOpen(false);
-                  onDelete(p.id);
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          ))}
+              <Plus size={14} /> New project
+            </button>
+          </div>
         </div>
       )}
     </div>

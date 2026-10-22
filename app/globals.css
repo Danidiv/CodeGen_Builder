@@ -6,10 +6,114 @@ html,
 body {
   height: 100%;
   margin: 0;
+  overflow-x: hidden;
 }
 
 body {
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background: #0b0d12;
   color: #e6e8ee;
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Thin dark scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+@layer components {
+  /* Buttons: every one has hover, focus-visible, active and disabled states. */
+  .btn {
+    @apply inline-flex h-8 select-none items-center justify-center gap-2 whitespace-nowrap rounded-btn border border-line bg-white/5 px-3 text-sm text-white/80 transition-colors;
+    @apply hover:bg-white/10 hover:text-white active:bg-white/[0.16];
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70;
+    @apply disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/5 disabled:hover:text-white/80;
+  }
+  .btn-primary {
+    @apply border-transparent bg-accent text-white hover:bg-accent-hover active:bg-accent-active;
+    @apply disabled:hover:bg-accent disabled:hover:text-white;
+  }
+  .btn-ghost {
+    @apply border-transparent bg-transparent disabled:hover:bg-transparent;
+  }
+  .btn-danger {
+    @apply border-transparent bg-red-600 text-white hover:bg-red-500 active:bg-red-700 disabled:hover:bg-red-600 disabled:hover:text-white;
+  }
+  .icon-btn {
+    @apply inline-flex h-8 w-8 select-none items-center justify-center rounded-btn border border-transparent bg-transparent p-0 text-white/70 transition-colors;
+    @apply hover:bg-white/10 hover:text-white active:bg-white/[0.16];
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70;
+    @apply disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-white/70;
+  }
+
+  .input {
+    @apply w-full rounded-btn border border-line bg-white/5 px-3 py-2 text-sm text-white transition-colors placeholder:text-white/40;
+    @apply hover:border-white/20 focus-visible:border-indigo-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40;
+    @apply disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .card {
+    @apply rounded-card border border-line bg-panel;
+  }
+  .menu {
+    @apply rounded-card border border-line bg-raised p-1 shadow-xl animate-fadeIn;
+  }
+  .menu-item {
+    @apply flex w-full items-center gap-2 rounded-btn px-2 py-2 text-left text-sm text-white/80 transition-colors;
+    @apply hover:bg-white/10 hover:text-white active:bg-white/[0.16] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70;
+    @apply disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent;
+  }
+
+  /* Tooltip for icon-only buttons (the text comes from data-tip). */
+  .tip {
+    position: relative;
+  }
+  .tip:hover::after,
+  .tip:focus-visible::after {
+    content: attr(data-tip);
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 4px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: #000;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12px;
+    line-height: 16px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 70;
+  }
+  .tip-right:hover::after,
+  .tip-right:focus-visible::after {
+    left: auto;
+    right: 0;
+    transform: none;
+  }
+  .tip-up:hover::after,
+  .tip-up:focus-visible::after {
+    top: auto;
+    bottom: 100%;
+    margin-top: 0;
+    margin-bottom: 4px;
+  }
+
+  .shimmer {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.04) 75%);
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-shimmer,
+  .animate-slideIn,
+  .animate-fadeIn {
+    animation: none !important;
+  }
 }

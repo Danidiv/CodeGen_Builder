@@ -1,95 +1,93 @@
 "use client";
 
-import { useState } from "react";
-import type { Version } from "@/lib/versions";
+import { Download, History, Maximize2, Minimize2, Monitor, RefreshCw, Smartphone, Tablet, Undo2, Redo2 } from "lucide-react";
+import { IconButton } from "./ui";
+
+export type Device = "desktop" | "tablet" | "mobile";
 
 type Props = {
-  versions: Version[];
+  count: number;
   active: number;
   disabled: boolean;
-  autoFix: boolean;
+  device: Device;
+  showDevices: boolean;
+  fullscreen: boolean;
   onUndo: () => void;
   onRedo: () => void;
-  onRestore: (index: number) => void;
+  onOpenHistory: () => void;
   onDownload: () => void;
-  onToggleAutoFix: (value: boolean) => void;
+  onDevice: (d: Device) => void;
+  onReload: () => void;
+  onToggleFullscreen: () => void;
 };
 
-function formatTime(ms: number): string {
-  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
+const DEVICES: { id: Device; label: string; Icon: typeof Monitor }[] = [
+  { id: "desktop", label: "Desktop", Icon: Monitor },
+  { id: "tablet", label: "Tablet", Icon: Tablet },
+  { id: "mobile", label: "Mobile", Icon: Smartphone },
+];
 
-const BTN =
-  "rounded-md border border-white/10 px-2 py-1 text-xs text-white/80 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent";
-
+/** Small icon-only toolbar above the preview. */
 export default function Toolbar({
-  versions,
+  count,
   active,
   disabled,
-  autoFix,
+  device,
+  showDevices,
+  fullscreen,
   onUndo,
   onRedo,
-  onRestore,
+  onOpenHistory,
   onDownload,
-  onToggleAutoFix,
+  onDevice,
+  onReload,
+  onToggleFullscreen,
 }: Props) {
-  const [open, setOpen] = useState(false);
   const canUndo = active > 0;
-  const canRedo = active < versions.length - 1;
+  const canRedo = active < count - 1;
 
   return (
-    <div className="relative border-b border-white/10 px-3 py-2">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button className={BTN} disabled={disabled || !canUndo} onClick={onUndo} title="Go back one version">
-          Undo
-        </button>
-        <button className={BTN} disabled={disabled || !canRedo} onClick={onRedo} title="Go forward one version">
-          Redo
-        </button>
-        <button className={BTN} disabled={disabled} onClick={() => setOpen((o) => !o)}>
-          History ({versions.length})
-        </button>
-        <button className={BTN} disabled={disabled} onClick={onDownload} title="Download project as .zip">
-          Download ZIP
-        </button>
-        <label
-          className="ml-auto flex cursor-pointer items-center gap-1 text-xs text-white/70"
-          title="When the preview shows an error, ask the AI to fix it automatically (up to 2 times)"
-        >
-          <input
-            type="checkbox"
-            checked={autoFix}
-            onChange={(e) => onToggleAutoFix(e.target.checked)}
-            className="accent-indigo-500"
-          />
-          Auto-fix
-        </label>
-      </div>
+    <div className="flex h-12 shrink-0 items-center gap-1 border-b border-line bg-panel px-2">
+      <IconButton label="Undo (go back one version)" disabled={disabled || !canUndo} onClick={onUndo}>
+        <Undo2 size={16} />
+      </IconButton>
+      <IconButton label="Redo (go forward one version)" disabled={disabled || !canRedo} onClick={onRedo}>
+        <Redo2 size={16} />
+      </IconButton>
+      <IconButton label={`History (${count} versions)`} disabled={disabled} onClick={onOpenHistory}>
+        <History size={16} />
+      </IconButton>
+      <IconButton label="Download project as .zip" disabled={disabled} onClick={onDownload}>
+        <Download size={16} />
+      </IconButton>
 
-      {open && (
-        <div className="absolute inset-x-3 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-lg border border-white/10 bg-[#12151c] p-1 shadow-xl">
-          {versions
-            .map((v, i) => ({ v, i }))
-            .reverse()
-            .map(({ v, i }) => (
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        {showDevices && (
+          <div role="group" aria-label="Preview size" className="hidden items-center rounded-btn border border-line p-1 sm:flex">
+            {DEVICES.map(({ id, label, Icon }) => (
               <button
-                key={v.id}
-                onClick={() => {
-                  onRestore(i);
-                  setOpen(false);
-                }}
-                className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-white/5 ${
-                  i === active ? "bg-indigo-600/30 text-white" : "text-white/80"
+                key={id}
+                type="button"
+                aria-label={label}
+                aria-pressed={device === id}
+                data-tip={label}
+                onClick={() => onDevice(id)}
+                className={`tip flex h-6 w-8 items-center justify-center rounded-[6px] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70 active:bg-white/[0.16] ${
+                  device === id ? "bg-white/10 text-white" : "text-white/50"
                 }`}
               >
-                <span className="truncate">
-                  #{i} · {v.label}
-                </span>
-                <span className="shrink-0 text-white/40">{formatTime(v.createdAt)}</span>
+                <Icon size={16} />
               </button>
             ))}
-        </div>
-      )}
+          </div>
+        )}
+        <IconButton label="Reload preview" onClick={onReload} className="tip-right">
+          <RefreshCw size={16} />
+        </IconButton>
+        <IconButton label={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"} onClick={onToggleFullscreen} className="tip-right">
+          {fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        </IconButton>
+      </div>
     </div>
   );
 }

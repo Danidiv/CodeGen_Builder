@@ -30,6 +30,9 @@
 | OPENROUTER_MODEL | e.g. `anthropic/claude-sonnet-4.5` |
 | OPENROUTER_MAX_TOKENS | `8000` |
 | DAILY_LIMIT | `30` |
+| PEXELS_API_KEY | free key from pexels.com/api (for matching photos) |
+| UNSPLASH_ACCESS_KEY | optional, the Unsplash "Access Key" (not the secret key) |
+| IMAGE_PROVIDERS | optional, e.g. `pexels,unsplash` |
 | OPENROUTER_SITE_URL | your Vercel URL, once you know it (optional) |
 
 Then press **Deploy**. After 1-2 minutes you get a URL like `https://codegen-app-xxxx.vercel.app`.

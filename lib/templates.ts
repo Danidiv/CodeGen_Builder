@@ -16,12 +16,12 @@ const STORE = `import { useState } from "react";
 import { ShoppingCart, Star, Moon, Sun, Search, Heart, Check } from "lucide-react";
 
 const PRODUCTS = [
-  { id: 1, name: "Classic Sneakers", price: 59, rating: 4.5, tag: "shoes" },
-  { id: 2, name: "Leather Backpack", price: 89, rating: 4.8, tag: "bag" },
-  { id: 3, name: "Minimal Watch", price: 129, rating: 4.7, tag: "watch" },
-  { id: 4, name: "Wireless Headphones", price: 99, rating: 4.4, tag: "audio" },
-  { id: 5, name: "Denim Jacket", price: 75, rating: 4.3, tag: "jacket" },
-  { id: 6, name: "Sunglasses", price: 45, rating: 4.6, tag: "glasses" },
+  { id: 1, name: "Classic Sneakers", price: 59, rating: 4.5, img: "image:white sneakers shoes" },
+  { id: 2, name: "Leather Backpack", price: 89, rating: 4.8, img: "image:brown leather backpack" },
+  { id: 3, name: "Minimal Watch", price: 129, rating: 4.7, img: "image:minimalist wrist watch" },
+  { id: 4, name: "Wireless Headphones", price: 99, rating: 4.4, img: "image:wireless headphones" },
+  { id: 5, name: "Denim Jacket", price: 75, rating: 4.3, img: "image:denim jacket fashion" },
+  { id: 6, name: "Sunglasses", price: 45, rating: 4.6, img: "image:sunglasses fashion" },
 ];
 
 export default function App() {
@@ -68,7 +68,7 @@ export default function App() {
             {shown.map((p) => (
               <div key={p.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
                 <div className="relative">
-                  <img src={"https://picsum.photos/seed/" + p.tag + "/600/450"} alt={p.name} className="h-52 w-full object-cover" />
+                  <img src={p.img} alt={p.name} className="h-52 w-full object-cover" />
                   <button
                     onClick={() => setLiked(liked.includes(p.id) ? liked.filter((x) => x !== p.id) : [...liked, p.id])}
                     className="absolute right-3 top-3 rounded-full bg-white/90 p-2 text-rose-500"
@@ -124,7 +124,11 @@ const STATS = [
   { value: "98%", label: "Satisfaction" },
   { value: "25", label: "Experts" },
 ];
-const TEAM = ["Sara Khan", "Ali Raza", "Maria Lopez"];
+const TEAM = [
+  { name: "Sara Khan", img: "image:professional businesswoman portrait|square" },
+  { name: "Ali Raza", img: "image:professional businessman portrait|square" },
+  { name: "Maria Lopez", img: "image:confident manager woman portrait|square" },
+];
 
 export default function App() {
   const [dark, setDark] = useState(false);
@@ -146,7 +150,7 @@ export default function App() {
         </header>
 
         <section className="relative">
-          <img src="https://picsum.photos/seed/office/1600/700" alt="Our office" className="h-[420px] w-full object-cover" />
+          <img src="image:modern office team meeting" alt="Our office" className="h-[420px] w-full object-cover" />
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/60 px-6 text-center text-white">
             <h1 className="text-4xl font-extrabold sm:text-5xl">We help businesses grow with confidence</h1>
             <p className="mt-3 max-w-xl text-slate-200">Trusted advisors for strategy, security and technology.</p>
@@ -181,10 +185,10 @@ export default function App() {
         <section id="team" className="bg-slate-50 px-6 py-16 dark:bg-slate-900">
           <h2 className="mb-8 text-center text-3xl font-bold">Meet the team</h2>
           <div className="mx-auto grid max-w-4xl gap-6 sm:grid-cols-3">
-            {TEAM.map((name) => (
-              <div key={name} className="text-center">
-                <img src={"https://picsum.photos/seed/" + name.split(" ")[0] + "/300/300"} alt={name} className="mx-auto h-32 w-32 rounded-full object-cover" />
-                <p className="mt-3 font-semibold">{name}</p>
+            {TEAM.map((member) => (
+              <div key={member.name} className="text-center">
+                <img src={member.img} alt={member.name} className="mx-auto h-32 w-32 rounded-full object-cover" />
+                <p className="mt-3 font-semibold">{member.name}</p>
                 <p className="text-sm text-slate-500">Senior partner</p>
               </div>
             ))}
@@ -225,11 +229,11 @@ const BLOG = `import { useState } from "react";
 import { Moon, Sun, Clock, ArrowRight, Mail } from "lucide-react";
 
 const POSTS = [
-  { id: 1, title: "10 habits of productive developers", cat: "Career", min: 6, text: "Small daily routines that make a big difference over a year." },
-  { id: 2, title: "Why simple code beats clever code", cat: "Coding", min: 4, text: "Readable code is cheaper to maintain and easier to fix." },
-  { id: 3, title: "A beginner guide to Tailwind CSS", cat: "Design", min: 8, text: "Build good looking pages quickly without leaving your HTML." },
-  { id: 4, title: "How I plan my week", cat: "Life", min: 3, text: "A tiny system with one notebook and three priorities." },
-  { id: 5, title: "Learning React in 30 days", cat: "Coding", min: 7, text: "A realistic plan with projects instead of only videos." },
+  { id: 1, title: "10 habits of productive developers", cat: "Career", min: 6, text: "Small daily routines that make a big difference over a year.", img: "image:developer working laptop desk" },
+  { id: 2, title: "Why simple code beats clever code", cat: "Coding", min: 4, text: "Readable code is cheaper to maintain and easier to fix.", img: "image:clean code screen monitor" },
+  { id: 3, title: "A beginner guide to Tailwind CSS", cat: "Design", min: 8, text: "Build good looking pages quickly without leaving your HTML.", img: "image:web design workspace" },
+  { id: 4, title: "How I plan my week", cat: "Life", min: 3, text: "A tiny system with one notebook and three priorities.", img: "image:notebook planner coffee desk" },
+  { id: 5, title: "Learning React in 30 days", cat: "Coding", min: 7, text: "A realistic plan with projects instead of only videos.", img: "image:learning programming laptop" },
 ];
 const CATS = ["All", "Coding", "Design", "Career", "Life"];
 
@@ -266,7 +270,7 @@ export default function App() {
         <main className="mx-auto max-w-5xl px-6 py-8">
           {first && (
             <article className="grid overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-stone-900 md:grid-cols-2">
-              <img src={"https://picsum.photos/seed/post" + first.id + "/800/600"} alt={first.title} className="h-64 w-full object-cover md:h-full" />
+              <img src={first.img} alt={first.title} className="h-64 w-full object-cover md:h-full" />
               <div className="p-6">
                 <span className="text-xs font-semibold uppercase tracking-wide text-orange-600">{first.cat}</span>
                 <h1 className="mt-2 font-serif text-3xl font-bold">{first.title}</h1>
@@ -278,7 +282,7 @@ export default function App() {
           <div className="mt-8 grid gap-6 sm:grid-cols-2">
             {rest.map((p) => (
               <article key={p.id} className="rounded-2xl bg-white p-5 shadow-sm dark:bg-stone-900">
-                <img src={"https://picsum.photos/seed/post" + p.id + "/600/320"} alt={p.title} className="h-40 w-full rounded-xl object-cover" />
+                <img src={p.img} alt={p.title} className="h-40 w-full rounded-xl object-cover" />
                 <span className="mt-3 block text-xs font-semibold uppercase text-orange-600">{p.cat}</span>
                 <h2 className="mt-1 font-serif text-xl font-bold">{p.title}</h2>
                 {open === p.id && <p className="mt-2 text-stone-600 dark:text-stone-400">{p.text} Read the full story to learn more.</p>}
@@ -318,10 +322,10 @@ const PORTFOLIO = `import { useState } from "react";
 import { Moon, Sun, Mail, MapPin, ArrowRight, Layers, Palette, Zap } from "lucide-react";
 
 const PROJECTS = [
-  { id: 1, title: "Fintech Dashboard", kind: "Web", text: "Analytics dashboard with live charts and dark mode." },
-  { id: 2, title: "Travel App", kind: "Mobile", text: "Trip planner with maps, bookings and offline mode." },
-  { id: 3, title: "Coffee Brand", kind: "Design", text: "Logo, packaging and a small marketing site." },
-  { id: 4, title: "Online Store", kind: "Web", text: "Fast shop with cart, search and checkout." },
+  { id: 1, title: "Fintech Dashboard", kind: "Web", text: "Analytics dashboard with live charts and dark mode.", img: "image:analytics dashboard screen" },
+  { id: 2, title: "Travel App", kind: "Mobile", text: "Trip planner with maps, bookings and offline mode.", img: "image:travel mobile app phone" },
+  { id: 3, title: "Coffee Brand", kind: "Design", text: "Logo, packaging and a small marketing site.", img: "image:coffee brand packaging design" },
+  { id: 4, title: "Online Store", kind: "Web", text: "Fast shop with cart, search and checkout.", img: "image:online shopping website laptop" },
 ];
 const SKILLS = [
   { icon: Layers, name: "Frontend", text: "React, TypeScript, Tailwind" },
@@ -354,7 +358,7 @@ export default function App() {
               Work with me <ArrowRight className="h-4 w-4" />
             </a>
           </div>
-          <img src="https://picsum.photos/seed/portrait/600/600" alt="Portrait" className="mx-auto h-72 w-72 rounded-3xl object-cover shadow-xl" />
+          <img src="image:creative woman designer portrait|square" alt="Portrait" className="mx-auto h-72 w-72 rounded-3xl object-cover shadow-xl" />
         </section>
 
         <section className="mx-auto grid max-w-5xl gap-4 px-6 sm:grid-cols-3">
@@ -381,7 +385,7 @@ export default function App() {
           <div className="grid gap-6 sm:grid-cols-2">
             {shown.map((p) => (
               <div key={p.id} className="group overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
-                <img src={"https://picsum.photos/seed/work" + p.id + "/800/500"} alt={p.title} className="h-48 w-full object-cover transition group-hover:scale-105" />
+                <img src={p.img} alt={p.title} className="h-48 w-full object-cover transition group-hover:scale-105" />
                 <div className="p-5">
                   <span className="text-xs font-semibold uppercase text-violet-600 dark:text-violet-400">{p.kind}</span>
                   <h3 className="mt-1 text-lg font-bold">{p.title}</h3>
@@ -409,12 +413,12 @@ const ELEARNING = `import { useState } from "react";
 import { Moon, Sun, GraduationCap, Clock, Users, Star, Play, Search } from "lucide-react";
 
 const COURSES = [
-  { id: 1, title: "React from Zero to Hero", cat: "Programming", level: "Beginner", hours: 18, students: 2400, price: 49 },
-  { id: 2, title: "UI Design Fundamentals", cat: "Design", level: "Beginner", hours: 10, students: 1800, price: 39 },
-  { id: 3, title: "Data Analysis with Python", cat: "Data", level: "Intermediate", hours: 22, students: 3100, price: 59 },
-  { id: 4, title: "Digital Marketing Basics", cat: "Business", level: "Beginner", hours: 8, students: 1200, price: 29 },
-  { id: 5, title: "Advanced TypeScript", cat: "Programming", level: "Advanced", hours: 14, students: 900, price: 55 },
-  { id: 6, title: "Public Speaking", cat: "Business", level: "Beginner", hours: 6, students: 2000, price: 25 },
+  { id: 1, title: "React from Zero to Hero", cat: "Programming", level: "Beginner", hours: 18, students: 2400, price: 49, img: "image:coding laptop student" },
+  { id: 2, title: "UI Design Fundamentals", cat: "Design", level: "Beginner", hours: 10, students: 1800, price: 39, img: "image:ui design sketch tablet" },
+  { id: 3, title: "Data Analysis with Python", cat: "Data", level: "Intermediate", hours: 22, students: 3100, price: 59, img: "image:data analysis charts laptop" },
+  { id: 4, title: "Digital Marketing Basics", cat: "Business", level: "Beginner", hours: 8, students: 1200, price: 29, img: "image:digital marketing team meeting" },
+  { id: 5, title: "Advanced TypeScript", cat: "Programming", level: "Advanced", hours: 14, students: 900, price: 55, img: "image:typescript code screen" },
+  { id: 6, title: "Public Speaking", cat: "Business", level: "Beginner", hours: 6, students: 2000, price: 25, img: "image:public speaking conference stage" },
 ];
 const CATS = ["All", "Programming", "Design", "Data", "Business"];
 
@@ -460,7 +464,7 @@ export default function App() {
             {shown.map((c) => (
               <div key={c.id} className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-slate-900">
                 <div className="relative">
-                  <img src={"https://picsum.photos/seed/course" + c.id + "/600/340"} alt={c.title} className="h-40 w-full object-cover" />
+                  <img src={c.img} alt={c.title} className="h-40 w-full object-cover" />
                   <span className="absolute left-3 top-3 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">{c.level}</span>
                   <Play className="absolute bottom-3 right-3 h-8 w-8 rounded-full bg-white/90 p-2 text-emerald-600" />
                 </div>

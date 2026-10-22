@@ -1,9 +1,13 @@
 "use client";
 
+import { AlertTriangle, ChevronRight, Paperclip, RotateCcw, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { TEMPLATES } from "@/lib/templates";
-import { STYLES } from "@/lib/styles";
-import { Attachment, MAX_IMAGES, MAX_TEXT_FILES, readAttachment } from "@/lib/attachments";
+import type { Attachment } from "@/lib/attachments";
+import ChatInput from "./ChatInput";
+import GenerationSteps from "./GenerationSteps";
+import { TEMPLATE_ICONS } from "./icons";
+import { Rocket } from "lucide-react";
 
 export type UiMessage = {
   role: "user" | "assistant";
@@ -26,54 +30,77 @@ type Props = {
   onStyle: (id: string) => void;
 };
 
-const SUGGESTIONS = [
-  "A todo app with categories and a dark theme",
-  "A landing page for a coffee shop",
-  "A personal finance dashboard with mock charts",
-];
+/**
+ * Messages sent by the Auto-fix / "Fix with AI" flow are shown as a small chip.
+ * Returns null for normal messages.
+ */
+export function parseFixMessage(content: string): { label: string; details: string } | null {
+  const auto = content.match(/^\[Auto-fix (\d+)\/(\d+)\]\s*/);
+  const manual = !auto && content.startsWith("The preview shows this error");
+  if (!auto && !manual) return null;
+  const marker = "output the full corrected files:";
+  const at = content.indexOf(marker);
+  const details = (at >= 0 ? content.slice(at + marker.length) : content.replace(/^\[Auto-fix \d+\/\d+\]\s*/, "")).trim();
+  return {
+    label: auto ? "Auto-fixed 1 error" + (Number(auto[1]) > 1 ? ` (attempt ${auto[1]}/${auto[2]})` : "") : "Asked AI to fix 1 error",
+    details,
+  };
+}
 
-function TemplatePicker({ onPick, disabled }: { onPick: (id: string) => void; disabled: boolean }) {
+function FixChip({ label, details }: { label: string; details: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="grid w-full grid-cols-2 gap-2">
-      {TEMPLATES.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => onPick(t.id)}
-          disabled={disabled}
-          className="rounded-lg border border-white/10 px-3 py-2 text-left text-sm hover:bg-white/5 disabled:opacity-50"
-        >
-          <span className="block text-white/90">
-            {t.emoji} {t.name}
-          </span>
-          <span className="block text-xs text-white/50">{t.description}</span>
-        </button>
-      ))}
+    <div className="max-w-[92%]">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="inline-flex h-6 items-center gap-1 rounded-full border border-line bg-white/5 px-2 text-xs text-white/60 transition-colors hover:bg-white/10 hover:text-white/80 active:bg-white/[0.16] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70"
+      >
+        <Wrench size={12} />
+        {label}
+        <ChevronRight size={12} className={`transition-transform ${open ? "rotate-90" : ""}`} />
+      </button>
+      {open && (
+        <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-btn border border-line bg-white/5 p-2 text-xs text-white/60">
+          {details || "(no details)"}
+        </pre>
+      )}
     </div>
   );
 }
 
+function TemplatePicker({ onPick, disabled }: { onPick: (id: string) => void; disabled: boolean }) {
+  return (
+    <div className="grid w-full grid-cols-2 gap-2">
+      {TEMPLATES.map((t) => {
+        const Icon = TEMPLATE_ICONS[t.id] ?? Rocket;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onPick(t.id)}
+            disabled={disabled}
+            className="card flex flex-col items-start gap-1 p-3 text-left transition-colors hover:border-white/20 hover:bg-raised active:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <span className="flex items-center gap-2 text-sm text-white/90">
+              <Icon size={14} className="text-white/60" /> {t.name}
+            </span>
+            <span className="text-xs text-white/50">{t.description}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Emoji inside message text (added by the page) are shown as icons instead. */
+function cleanText(s: string): string {
+  return s.replace(/⚠️\s*/g, "").replace(/^⏹\s*/, "");
+}
+
 export default function Chat({ messages, loading, status, onSend, onStop, onRetry, onTemplate, styleId, onStyle }: Props) {
   const [input, setInput] = useState("");
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [attachError, setAttachError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  async function addFiles(list: FileList | File[]) {
-    setAttachError(null);
-    let next = [...attachments];
-    for (const file of Array.from(list)) {
-      try {
-        const a = await readAttachment(file);
-        const sameKind = next.filter((x) => x.kind === a.kind).length;
-        if (a.kind === "image" && sameKind >= MAX_IMAGES) throw new Error("At most " + MAX_IMAGES + " images per message.");
-        if (a.kind === "text" && sameKind >= MAX_TEXT_FILES) throw new Error("At most " + MAX_TEXT_FILES + " text files per message.");
-        next = [...next, a];
-      } catch (err) {
-        setAttachError(err instanceof Error ? err.message : "Could not attach this file.");
-      }
-    }
-    setAttachments(next);
-  }
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // How long the current answer has been running (local models can take minutes).
@@ -87,26 +114,11 @@ export default function Chat({ messages, loading, status, onSend, onStop, onRetr
     const id = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
     return () => clearInterval(id);
   }, [loading]);
-  const elapsedText = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`;
+  const elapsedText = elapsed <= 0 ? "" : elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, status]);
-
-  function submit() {
-    let text = input.trim();
-    if ((!text && attachments.length === 0) || loading) return;
-    if (!text) {
-      text = attachments.some((a) => a.kind === "image")
-        ? "Build a page that looks like the attached reference image."
-        : "Use the attached file for the content.";
-    }
-    const files = attachments;
-    setInput("");
-    setAttachments([]);
-    setAttachError(null);
-    onSend(text, files);
-  }
 
   const lastIndex = messages.length - 1;
 
@@ -114,164 +126,74 @@ export default function Chat({ messages, loading, status, onSend, onStop, onRetr
     <div className="flex h-full flex-col">
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {messages.length === 0 && (
-          <div className="space-y-2">
-            <p className="text-sm text-white/60">Start from a template:</p>
-            <TemplatePicker onPick={onTemplate} disabled={loading} />
-            <p className="pt-2 text-sm text-white/60">Or try one of these:</p>
-            {SUGGESTIONS.map((s) => (
-              <button
-                key={s}
-                onClick={() => onSend(s)}
-                disabled={loading}
-                className="block w-full rounded-lg border border-white/10 px-3 py-2 text-left text-sm text-white/80 hover:bg-white/5 disabled:opacity-50"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
+          <p className="text-sm text-white/50">Describe what you want to build, or change something in your project.</p>
         )}
 
         {messages.map((m, i) => {
+          const fix = m.role === "user" ? parseFixMessage(m.content) : null;
+          if (fix) {
+            return (
+              <div key={i} className="flex flex-col items-end">
+                <FixChip label={fix.label} details={fix.details} />
+              </div>
+            );
+          }
           const failed = m.role === "assistant" && !!m.kind;
+          // "text\n📎 file1, file2" -> text + attachment chip
+          const att = m.role === "user" ? m.content.match(/\n📎 ([\s\S]+)$/) : null;
+          const text = att ? m.content.slice(0, att.index) : m.content;
+          // The live answer bubble stays hidden while only the progress steps are needed.
+          const pending = m.role === "assistant" && !m.content && i === lastIndex && loading;
           return (
             <div key={i} className={m.role === "user" ? "flex flex-col items-end" : "flex flex-col items-start"}>
-              <div
-                className={`max-w-[92%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm ${
-                  m.role === "user"
-                    ? "bg-indigo-600 text-white"
-                    : failed
-                      ? "border border-amber-400/30 bg-amber-950/40 text-amber-100"
-                      : "bg-white/5 text-white/90"
-                }`}
-              >
-                {m.content || "..."}
-              </div>
-              {m.showTemplates && <div className="mt-2 w-full"><TemplatePicker onPick={onTemplate} disabled={loading} /></div>}
-              {failed && i === lastIndex && !loading && (
-                <button
-                  onClick={onRetry}
-                  className="mt-1.5 rounded-md border border-white/15 px-3 py-1 text-xs text-white/80 hover:bg-white/5"
-                  title="Send the same request again"
+              {!pending && (
+                <div
+                  className={`max-w-[92%] whitespace-pre-wrap break-words rounded-card px-3 py-2 text-sm ${
+                    m.role === "user"
+                      ? "bg-accent text-white"
+                      : failed
+                        ? "border border-amber-400/30 bg-amber-950/40 text-amber-100"
+                        : "border border-line bg-white/5 text-white/90"
+                  }`}
                 >
-                  ↻ Try again
+                  {failed && <AlertTriangle size={14} className="mr-2 inline-block -translate-y-px" aria-hidden />}
+                  {cleanText(text) || "..."}
+                  {att && (
+                    <span className="mt-1 flex items-center gap-1 text-xs text-white/70">
+                      <Paperclip size={12} /> {att[1]}
+                    </span>
+                  )}
+                </div>
+              )}
+              {m.showTemplates && (
+                <div className="mt-2 w-full">
+                  <TemplatePicker onPick={onTemplate} disabled={loading} />
+                </div>
+              )}
+              {failed && i === lastIndex && !loading && (
+                <button type="button" onClick={onRetry} className="btn mt-2" title="Send the same request again">
+                  <RotateCcw size={14} /> Try again
                 </button>
               )}
             </div>
           );
         })}
 
-        {status && (
-          <div className="text-xs text-indigo-300">
-            {status}
-            {loading && elapsed > 0 ? ` · ${elapsedText}` : ""}
-          </div>
-        )}
+        {loading && <GenerationSteps status={status} elapsedText={elapsedText} />}
+        {!loading && status && <p className="text-xs text-white/50">{status}</p>}
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-white/10 p-3">
-        <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="text-white/40">Style:</span>
-          {STYLES.map((st) => (
-            <button
-              key={st.id}
-              onClick={() => onStyle(st.id)}
-              className={`rounded-full border px-2.5 py-0.5 ${
-                styleId === st.id
-                  ? "border-indigo-400 bg-indigo-500/20 text-white"
-                  : "border-white/10 text-white/60 hover:bg-white/5"
-              }`}
-              title={st.prompt || "The AI decides the look"}
-            >
-              {st.emoji} {st.name}
-            </button>
-          ))}
-        </div>
-        {(attachments.length > 0 || attachError) && (
-          <div className="mb-2 space-y-1">
-            {attachments.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {attachments.map((a, i) => (
-                  <span key={i} className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 py-1 pl-1.5 pr-2 text-xs text-white/80">
-                    {a.kind === "image" ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={a.data} alt={a.name} className="h-6 w-6 rounded object-cover" />
-                    ) : (
-                      <span>📄</span>
-                    )}
-                    <span className="max-w-[110px] truncate">{a.name}</span>
-                    <button onClick={() => setAttachments(attachments.filter((_, j) => j !== i))} className="text-white/50 hover:text-white" title="Remove">
-                      ✕
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            {attachError && <p className="text-xs text-amber-300">{attachError}</p>}
-          </div>
-        )}
-        <input
-          ref={fileRef}
-          type="file"
-          multiple
-          accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.markdown,.json,.csv,.html,.css,.js,.ts,.tsx,.jsx,text/plain"
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files) void addFiles(e.target.files);
-            e.target.value = "";
-          }}
+      <div className="shrink-0 border-t border-line p-3">
+        <ChatInput
+          value={input}
+          onChange={setInput}
+          loading={loading}
+          onSend={onSend}
+          onStop={onStop}
+          styleId={styleId}
+          onStyle={onStyle}
         />
-        <div className="flex gap-2">
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={loading}
-            className="self-end rounded-lg border border-white/10 px-2.5 py-2 text-sm text-white/70 hover:bg-white/5 disabled:opacity-40"
-            title="Attach a text file or a reference image (you can also paste an image)"
-          >
-            📎
-          </button>
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape" && loading) {
-                onStop();
-                return;
-              }
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            onPaste={(e) => {
-              const imgs = Array.from(e.clipboardData.files as FileList).filter((f: File) => f.type.startsWith("image/"));
-              if (imgs.length > 0) {
-                e.preventDefault();
-                void addFiles(imgs);
-              }
-            }}
-            rows={2}
-            placeholder="Describe your app or ask for a change..."
-            className="flex-1 resize-none rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none placeholder:text-white/40 focus:border-indigo-400"
-          />
-          {loading ? (
-            <button
-              onClick={onStop}
-              className="self-end rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
-              title="Stop the AI (Esc)"
-            >
-              ■ Stop
-            </button>
-          ) : (
-            <button
-              onClick={submit}
-              disabled={!input.trim()}
-              className="self-end rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
-            >
-              Send
-            </button>
-          )}
-        </div>
       </div>
     </div>
   );

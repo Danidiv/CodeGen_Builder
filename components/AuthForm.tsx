@@ -37,17 +37,16 @@ export default function AuthForm() {
     }
   }
 
-  const input =
-    "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none placeholder:text-white/40 focus:border-indigo-400";
+  const input = "input";
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
       <form
         onSubmit={submit}
-        className="w-full max-w-sm space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-6"
+        className="w-full max-w-sm space-y-4 card p-6"
       >
         <div>
-          <h1 className="text-lg font-semibold">CodeGen Builder</h1>
+          <h1 className="text-lg font-semibold">NEXA AI</h1>
           <p className="mt-1 text-sm text-white/60">
             {mode === "signin" ? "Sign in to open your projects." : "Create an account to save your projects."}
           </p>
@@ -73,13 +72,13 @@ export default function AuthForm() {
           className={input}
         />
 
-        {error && <p className="rounded-md bg-red-950/70 px-3 py-2 text-sm text-red-200">{error}</p>}
-        {info && <p className="rounded-md bg-emerald-950/70 px-3 py-2 text-sm text-emerald-200">{info}</p>}
+        {error && <p className="rounded-btn bg-red-950/70 px-3 py-2 text-sm text-red-200">{error}</p>}
+        {info && <p className="rounded-btn bg-emerald-950/70 px-3 py-2 text-sm text-emerald-200">{info}</p>}
 
         <button
           type="submit"
           disabled={busy}
-          className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          className="btn btn-primary w-full"
         >
           {busy ? "Please wait..." : mode === "signin" ? "Sign in" : "Create account"}
         </button>
@@ -91,7 +90,7 @@ export default function AuthForm() {
             setError(null);
             setInfo(null);
           }}
-          className="w-full text-center text-xs text-white/60 hover:text-white"
+          className="btn btn-ghost w-full text-xs text-white/60"
         >
           {mode === "signin" ? "No account yet? Create one" : "Already have an account? Sign in"}
         </button>

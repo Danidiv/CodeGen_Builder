@@ -70,7 +70,7 @@ export default defineConfig({ plugins: [react()] });
     ),
     "README.md": `# ${appName}
 
-Generated with CodeGen Builder.
+Generated with NEXA AI.
 
 \`\`\`bash
 npm install
