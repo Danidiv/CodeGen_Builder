@@ -1270,6 +1270,7 @@ export default function Home() {
                   tab={tab}
                   device={device}
                   reloadSignal={reloadSignal}
+                  testScope={projectId ?? "local"}
                   blank={files["/App.tsx"] === DEFAULT_FILES["/App.tsx"]}
                 />
                 {previewError && !loading && (

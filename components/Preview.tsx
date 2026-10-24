@@ -10,6 +10,7 @@ import {
 } from "@codesandbox/sandpack-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { detectDependencies } from "@/lib/deps";
+import { runTestOp, type TestMsg } from "@/lib/testDb";
 import { backendFiles } from "@/lib/backend";
 import {
   PROBE_AFTER,
@@ -37,6 +38,8 @@ type Props = {
   reloadSignal?: number;
   /** True while the project is still the empty starter: a skeleton is shown during generation. */
   blank?: boolean;
+  /** Keeps the test data of db() (saved data in preview mode) separate per project. */
+  testScope?: string;
 };
 
 const DEVICE_WIDTH = { desktop: "100%", tablet: "768px", mobile: "390px" } as const;
@@ -210,7 +213,7 @@ function PreviewStatus({
   );
 }
 
-export default function Preview({ files, onError, busy = false, onFilesEdit, tab = "preview", device = "desktop", reloadSignal = 0, blank = false }: Props) {
+export default function Preview({ files, onError, busy = false, onFilesEdit, tab = "preview", device = "desktop", reloadSignal = 0, blank = false, testScope = "local" }: Props) {
   // Bumping this restarts the preview.
   const [reloadKey, setReloadKey] = useState(0);
   const autoReloads = useRef(0);
@@ -241,6 +244,24 @@ export default function Preview({ files, onError, busy = false, onFilesEdit, tab
     setReloadKey((k) => k + 1);
   };
   const stableReload = useRef(() => reload.current()).current;
+
+  // db() inside the preview asks this page to keep its test data (the preview iframe cannot keep it
+  // itself, its address changes with every reload).
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      const d = e.data as TestMsg | null;
+      if (!d || d.nexaDb !== true || typeof d.id !== "string" || !e.source) return;
+      let reply: { result?: unknown; error?: string };
+      try {
+        reply = runTestOp(localStorage, testScope, d);
+      } catch {
+        reply = { error: "Could not save in test mode." };
+      }
+      (e.source as Window).postMessage({ nexaReply: d.id, ...reply }, "*");
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [testScope]);
 
   // "Reload preview" button in the toolbar.
   useEffect(() => {
