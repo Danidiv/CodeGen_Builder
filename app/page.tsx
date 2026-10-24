@@ -7,6 +7,7 @@ import Preview from "@/components/Preview";
 import Toolbar, { type Device } from "@/components/Toolbar";
 import Header, { type Tab } from "@/components/Header";
 import HistoryDrawer from "@/components/HistoryDrawer";
+import InboxDrawer from "@/components/InboxDrawer";
 import EmptyState from "@/components/EmptyState";
 import { THEMES, THEME_KEY, themeBg } from "@/components/themes";
 import { computeThumb } from "@/lib/thumb";
@@ -26,6 +27,7 @@ import PublishBar from "@/components/PublishBar";
 import type { Attachment } from "@/lib/attachments";
 import { TEMPLATES, getTemplate } from "@/lib/templates";
 import { isMultiSiteRequest } from "@/lib/siteTypes";
+import { BRIEF_SEP, extractUrl } from "@/lib/urlRef";
 import { MAX_VERSIONS, Version, makeVersion } from "@/lib/versions";
 import { supabase } from "@/lib/supabase";
 import {
@@ -132,6 +134,7 @@ export default function Home() {
   const [fullscreen, setFullscreen] = useState(false);
   const [reloadSignal, setReloadSignal] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<"chat" | "preview">("chat");
   const [chatWidth, setChatWidth] = useState(CHAT_DEFAULT_W);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -918,7 +921,8 @@ export default function Home() {
         setMessages([...baseMessages, { role: "user", content: text }, { role: "assistant", content: smallTalkReply(text) }]);
         return;
       }
-      if (intent === "chat") {
+      // A pasted website link (without a question mark) is a request to build something like it.
+      if (intent === "chat" && !(extractUrl(text) && !text.trim().endsWith("?"))) {
         await handleChat(text, baseMessages);
         return;
       }
@@ -947,16 +951,65 @@ export default function Home() {
     const isAutoFix = versionLabel?.startsWith("Auto-fix") ?? false;
     if (!isAutoFix) attemptsRef.current = 0; // a real user message resets the counter
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    // A reference website in the message: read its layout and design first (the analysis is sent
+    // to the AI together with the request, and hidden in the chat).
+    let sentText = text;
+    const refUrl = !versionLabel && !text.includes(BRIEF_SEP) ? extractUrl(text) : null;
+    if (refUrl) {
+      setMessages([...baseMessages, { role: "user", content: text }, { role: "assistant", content: "" }]);
+      setLoading(true);
+      setStatus("Reading the website...");
+      let failure = "Could not read that website.";
+      try {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (supabase) {
+          const { data } = await supabase.auth.getSession();
+          if (data.session) headers.Authorization = `Bearer ${data.session.access_token}`;
+        }
+        const res = await fetch("/api/inspect", {
+          method: "POST",
+          headers,
+          signal: controller.signal,
+          body: JSON.stringify({ url: refUrl }),
+        });
+        const info = res.ok
+          ? ((await res.json()) as { ok?: boolean; brief?: string; error?: string })
+          : { ok: false, error: await res.text() };
+        if (info.ok && info.brief) sentText = text + BRIEF_SEP + info.brief;
+        else failure = info.error || failure;
+      } catch (err) {
+        if (controller.signal.aborted) failure = "Stopped.";
+      }
+      if (sentText === text) {
+        if (abortRef.current === controller) abortRef.current = null;
+        setMessages([
+          ...baseMessages,
+          { role: "user", content: text },
+          {
+            role: "assistant",
+            content:
+              failure +
+              " Nothing was changed. You can attach a screenshot of the site with the paperclip, or remove the link and describe the design in words.",
+            kind: "warning",
+          },
+        ]);
+        setLoading(false);
+        setStatus(null);
+        return;
+      }
+    }
+
     const shownText =
-      attachments && attachments.length > 0 ? text + "\n📎 " + attachments.map((f) => f.name).join(", ") : text;
+      attachments && attachments.length > 0 ? sentText + "\n📎 " + attachments.map((f) => f.name).join(", ") : sentText;
     const chatHistory: UiMessage[] = [...baseMessages, { role: "user", content: shownText }];
     setMessages([...chatHistory, { role: "assistant", content: "" }]);
     setLoading(true);
     setStatus(isAutoFix ? `${versionLabel}...` : "Thinking...");
 
     const baseFiles = files;
-    const controller = new AbortController();
-    abortRef.current = controller;
 
     try {
       let pass = await streamOnce(chatHistory, chatHistory, baseFiles, controller.signal);
@@ -981,7 +1034,7 @@ export default function Home() {
             `Do NOT use <edit> blocks this time, and do not use tool calls or function-call syntax.]`;
         const retryMessages: UiMessage[] = [
           ...chatHistory.slice(0, -1),
-          { role: "user", content: text + note },
+          { role: "user", content: sentText + note },
         ];
         pass = await streamOnce(retryMessages, chatHistory, baseFiles, controller.signal);
         result = interpretResponse(pass.raw, baseFiles, pass.truncated);
@@ -1124,6 +1177,7 @@ export default function Home() {
         disabled={loading}
         onNew={cloud ? undefined : handleNewProject}
         onSignOut={cloud ? handleSignOut : undefined}
+        onInbox={supabase && projectId ? () => setInboxOpen(true) : undefined}
         onHome={cloud && !showHome ? () => setView("home") : undefined}
         bgTheme={bgTheme}
         onBgTheme={changeBgTheme}
@@ -1254,6 +1308,9 @@ export default function Home() {
         </>
       )}
 
+      {supabase && projectId && (
+        <InboxDrawer sb={supabase} projectId={projectId} projectName={projectName} open={inboxOpen} onClose={() => setInboxOpen(false)} />
+      )}
       <HistoryDrawer
         open={historyOpen}
         versions={history.versions}

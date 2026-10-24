@@ -1,3 +1,5 @@
+import { backendFiles } from "./backend";
+
 type Files = Record<string, string>;
 
 /**
@@ -19,7 +21,8 @@ export function checkResult(base: Files, next: Files): string | null {
   }
 
   // Imports are checked against the whole project as it will look after the change.
-  return checkImports({ ...base, ...next }, Object.keys(next));
+  // The NEXA backend files exist at run time, so imports of "./nexa" are fine.
+  return checkImports({ ...backendFiles(null), ...base, ...next }, Object.keys(next));
 }
 
 // ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import { backendFiles, usesBackend } from "./backend";
 import JSZip from "jszip";
 
 /**
@@ -93,6 +94,13 @@ export async function downloadProjectZip(files: Record<string, string>, appName 
   }
   for (const [path, content] of Object.entries(scaffold(appName))) {
     if (!written.has(path)) root.file(path, content);
+  }
+  // Forms use the NEXA SDK; outside NEXA AI it runs in test mode (nothing is sent).
+  if (usesBackend(files)) {
+    for (const [path, content] of Object.entries(backendFiles(null))) {
+      const clean = path.replace(/^\/+/, "");
+      if (!written.has(clean)) root.file(clean, content);
+    }
   }
 
   const blob = await zip.generateAsync({ type: "blob" });

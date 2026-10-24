@@ -75,7 +75,7 @@ lib/
 ## Next steps
 
 - Deploy to Vercel
-- Backend for generated apps
+- Backend for generated apps: forms (`submitForm`) and saved data per visitor (`db("tasks")`) are done; visitor login is next
 - Done already: usage limits (`DAILY_LIMIT`, run `supabase/schema.sql` again once), templates, Code tab edits are saved
 
 ## Notes
@@ -142,3 +142,13 @@ Pexels allows 200 requests per hour; answers are cached on the server for 6 hour
 Unsplash (`UNSPLASH_ACCESS_KEY`) works as a second source: photos are used directly, the photographer and Unsplash are credited in the
 same badge, and each used photo is reported to Unsplash's download endpoint (their rule). Demo mode = 50 requests per hour.
 Pixabay is not supported on purpose: its rules forbid permanent hotlinking of its image URLs (images must be downloaded and hosted by you).
+
+## Saved data for generated apps (backend step 2)
+
+Generated apps can keep data with `import { db } from "./nexa"` (`list`, `add`, `update`, `remove`).
+On a published site the data is stored in the `site_records` table through four database functions
+(`data_list`, `data_add`, `data_update`, `data_remove`); every visitor's browser has a secret random key and only
+sees its own items. Limits: 5000 characters and 30 fields per item, 200 items per visitor and list, 5000 items per site,
+60 writes per minute per site. In the preview inside NEXA AI the data stays in the browser (test mode). The owner
+sees and can delete everything under Inbox > Saved data. Run `supabase/schema.sql` again once, then `notify pgrst, 'reload schema';`.
+Unpublishing a site deletes its form messages and saved data.

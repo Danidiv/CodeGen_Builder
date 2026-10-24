@@ -4,6 +4,7 @@ import { SandpackPreview, SandpackProvider } from "@codesandbox/sandpack-react";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { detectDependencies } from "@/lib/deps";
+import { backendFiles } from "@/lib/backend";
 import { fetchPublicSite, reportSite } from "@/lib/publish";
 import { REPORT_REASONS } from "@/lib/publishRules";
 import { supabase } from "@/lib/supabase";
@@ -83,7 +84,14 @@ export default function PublishedSite() {
     <div className="relative h-screen w-screen bg-white">
       <SandpackProvider
         template="react-ts"
-        files={site.files}
+        files={{
+          ...backendFiles({
+            site: id,
+            url: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+            key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+          }),
+          ...site.files,
+        }}
         customSetup={{ dependencies }}
         options={{ externalResources: ["https://cdn.tailwindcss.com"], initMode: "immediate", bundlerTimeOut: 120000 }}
         style={{ height: "100%" }}

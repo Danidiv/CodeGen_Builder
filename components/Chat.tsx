@@ -1,12 +1,13 @@
 "use client";
 
-import { AlertTriangle, ChevronRight, Paperclip, RotateCcw, Wrench } from "lucide-react";
+import { AlertTriangle, ChevronRight, Link2, Paperclip, RotateCcw, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { TEMPLATES } from "@/lib/templates";
 import type { Attachment } from "@/lib/attachments";
 import ChatInput from "./ChatInput";
 import GenerationSteps from "./GenerationSteps";
 import { TEMPLATE_ICONS } from "./icons";
+import { splitBrief } from "@/lib/urlRef";
 import { Rocket } from "lucide-react";
 
 export type UiMessage = {
@@ -141,7 +142,9 @@ export default function Chat({ messages, loading, status, onSend, onStop, onRetr
           const failed = m.role === "assistant" && !!m.kind;
           // "text\n📎 file1, file2" -> text + attachment chip
           const att = m.role === "user" ? m.content.match(/\n📎 ([\s\S]+)$/) : null;
-          const text = att ? m.content.slice(0, att.index) : m.content;
+          const rawText = att ? m.content.slice(0, att.index) : m.content;
+          // Hidden analysis of a reference website: show only a small "Read: host" chip.
+          const { text, host: refHost } = m.role === "user" ? splitBrief(rawText) : { text: rawText, host: null };
           // The live answer bubble stays hidden while only the progress steps are needed.
           const pending = m.role === "assistant" && !m.content && i === lastIndex && loading;
           return (
@@ -158,6 +161,11 @@ export default function Chat({ messages, loading, status, onSend, onStop, onRetr
                 >
                   {failed && <AlertTriangle size={14} className="mr-2 inline-block -translate-y-px" aria-hidden />}
                   {cleanText(text) || "..."}
+                  {refHost && (
+                    <span className="mt-1 flex items-center gap-1 text-xs text-white/70">
+                      <Link2 size={12} /> Reference read: {refHost}
+                    </span>
+                  )}
                   {att && (
                     <span className="mt-1 flex items-center gap-1 text-xs text-white/70">
                       <Paperclip size={12} /> {att[1]}

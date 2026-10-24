@@ -10,6 +10,7 @@ import {
 } from "@codesandbox/sandpack-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { detectDependencies } from "@/lib/deps";
+import { backendFiles } from "@/lib/backend";
 import {
   PROBE_AFTER,
   SHOW_HELP_AFTER,
@@ -256,7 +257,7 @@ export default function Preview({ files, onError, busy = false, onFilesEdit, tab
           key={`${depsKey}:${reloadKey}:${filesKey}`}
           template="react-ts"
           theme="dark"
-          files={shown}
+          files={{ ...backendFiles(null), ...shown }}
           customSetup={{ dependencies }}
           options={{
             externalResources: ["https://cdn.tailwindcss.com"],
