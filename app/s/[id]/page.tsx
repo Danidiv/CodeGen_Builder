@@ -13,7 +13,7 @@ import { supabase } from "@/lib/supabase";
 export default function PublishedSite() {
   const params = useParams<{ id: string }>();
   const id = typeof params?.id === "string" ? params.id : "";
-  const [site, setSite] = useState<{ name: string; files: Record<string, string> } | null>(null);
+  const [site, setSite] = useState<{ id: string; name: string; files: Record<string, string> } | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "missing" | "error">("loading");
   const [message, setMessage] = useState("");
 
@@ -23,7 +23,7 @@ export default function PublishedSite() {
       setMessage("This server is not connected to a database.");
       return;
     }
-    if (!/^[a-z0-9]{6,32}$/i.test(id)) {
+    if (!/^[a-z0-9-]{3,40}$/i.test(id)) {
       setState("missing");
       return;
     }
@@ -58,7 +58,7 @@ export default function PublishedSite() {
     if (!supabase) return;
     setReportState("sending");
     try {
-      await reportSite(supabase, id, reason, details);
+      await reportSite(supabase, site?.id ?? id, reason, details);
       setReportState("sent");
     } catch (err) {
       setReportState("error");
@@ -86,7 +86,7 @@ export default function PublishedSite() {
         template="react-ts"
         files={{
           ...backendFiles({
-            site: id,
+            site: site.id,
             url: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
             key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
           }),

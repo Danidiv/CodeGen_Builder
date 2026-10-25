@@ -36,6 +36,52 @@ function fail(action: string, error: { message: string }): never {
   throw new Error(`Could not ${action}: ${error.message}`);
 }
 
+/** Custom link names: /s/my-coffee-shop (3-40 characters: a-z, 0-9 and single hyphens; not at the start or end). */
+export const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
+
+export function normalizeSlug(input: string): string {
+  return input.trim().toLowerCase().replace(/\s+/g, "-");
+}
+
+/** A message when the link name is not allowed, or null. */
+export function checkSlug(slug: string): string | null {
+  if (!SLUG_RE.test(slug) || slug.includes("--") || /^[0-9a-f]{10}$/.test(slug)) {
+    return "Use 3 to 40 letters, numbers or single hyphens (no spaces; not at the start or end).";
+  }
+  return null;
+}
+
+/** The id and the custom link name of the published site of this project, or null. */
+export async function getPublishedInfo(sb: SupabaseClient, projectId: string): Promise<{ id: string; slug: string | null } | null> {
+  const { data, error } = await sb.from("published_sites").select("id, slug").eq("project_id", projectId).maybeSingle();
+  if (error) {
+    // Older database without the slug column: the site works, only custom names are unavailable.
+    const plain = await sb.from("published_sites").select("id").eq("project_id", projectId).maybeSingle();
+    if (plain.error) fail("check the published site", plain.error);
+    return plain.data ? { id: plain.data.id as string, slug: null } : null;
+  }
+  return data ? { id: data.id as string, slug: (data.slug as string | null) ?? null } : null;
+}
+
+/** Sets (or removes, with an empty name) the custom link name. */
+export async function setSiteSlug(sb: SupabaseClient, projectId: string, slug: string): Promise<string | null> {
+  const value = normalizeSlug(slug);
+  if (value) {
+    const bad = checkSlug(value);
+    if (bad) throw new Error(bad);
+  }
+  const { error } = await sb.from("published_sites").update({ slug: value || null }).eq("project_id", projectId);
+  if (error) {
+    if (/published_sites_slug_idx|duplicate key/i.test(error.message)) throw new Error("This link name is already taken. Try another one.");
+    if (/slug_format/i.test(error.message)) throw new Error(checkSlug(value) ?? "This link name is not allowed.");
+    if (/slug|schema cache/i.test(error.message)) {
+      throw new Error("Custom link names are not set up yet. Run supabase/site_slug.sql in the Supabase SQL Editor, then run: notify pgrst, 'reload schema';");
+    }
+    fail("save the link name", error);
+  }
+  return value || null;
+}
+
 /** The id of the published site of this project, or null. */
 export async function getPublishedId(sb: SupabaseClient, projectId: string): Promise<string | null> {
   const { data, error } = await sb.from("published_sites").select("id").eq("project_id", projectId).maybeSingle();
@@ -65,17 +111,17 @@ export async function unpublishSite(sb: SupabaseClient, projectId: string): Prom
 }
 
 /** Public read (works without login) of one site by its id. */
-export async function fetchPublicSite(sb: SupabaseClient, id: string): Promise<{ name: string; files: Files } | null> {
+export async function fetchPublicSite(sb: SupabaseClient, id: string): Promise<{ id: string; name: string; files: Files } | null> {
   const { data, error } = await sb.rpc("get_published_site", { p_id: id });
   if (error) fail("load the site", error);
-  const d = data as { name?: unknown; files?: unknown } | null;
+  const d = data as { id?: unknown; name?: unknown; files?: unknown } | null;
   if (!d || typeof d.files !== "object" || d.files === null) return null;
   const files: Files = {};
   for (const [k, v] of Object.entries(d.files as Record<string, unknown>)) {
     if (typeof v === "string") files[k] = v;
   }
   if (!files["/App.tsx"]) return null;
-  return { name: typeof d.name === "string" ? d.name : "Site", files };
+  return { id: typeof d.id === "string" ? d.id : id, name: typeof d.name === "string" ? d.name : "Site", files };
 }
 
 /** A visitor reports a published site (works without login). */

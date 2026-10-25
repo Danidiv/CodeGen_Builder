@@ -162,3 +162,8 @@ A logged-in user's `db()` items are tied to the account (a private data key), so
 Not there yet: email verification and password reset (no email system). Owner: Inbox > Users lists and deletes accounts.
 Run `supabase/visitor_login.sql` once (after `saved_data.sql`), then `notify pgrst, 'reload schema';`.
 In the preview inside NEXA AI, accounts are test accounts kept in the NEXA AI page (plain text, never use real passwords there).
+
+## Custom link name
+
+After publishing, the Publish menu has a "Link name" field: `/s/my-coffee-shop` instead of `/s/3f9a1c7b2e`
+(3-40 letters, numbers, single hyphens; unique across all sites). Needs `supabase/site_slug.sql` once. The old id link keeps working.

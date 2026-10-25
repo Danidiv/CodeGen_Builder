@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Check, ChevronDown, Copy, ExternalLink, Globe, Loader2, RefreshCw, Unplug } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useDismiss } from "./ui";
-import { filesFingerprint, getPublishedId, publishSite, siteUrl, unpublishSite } from "@/lib/publish";
+import { checkSlug, filesFingerprint, getPublishedInfo, normalizeSlug, publishSite, setSiteSlug, siteUrl, unpublishSite } from "@/lib/publish";
 
 type Props = {
   sb: SupabaseClient;
@@ -17,6 +17,10 @@ type Props = {
 /** Publish / update / unpublish the site of the current project and show its public link. */
 export default function PublishBar({ sb, projectId, name, files, disabled }: Props) {
   const [siteId, setSiteId] = useState<string | null>(null);
+  const [slug, setSlug] = useState<string | null>(null);
+  const [slugInput, setSlugInput] = useState("");
+  const [slugBusy, setSlugBusy] = useState(false);
+  const [slugError, setSlugError] = useState<string | null>(null);
   const [publishedPrint, setPublishedPrint] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,11 +33,17 @@ export default function PublishBar({ sb, projectId, name, files, disabled }: Pro
   useEffect(() => {
     let cancelled = false;
     setSiteId(null);
+    setSlug(null);
+    setSlugInput("");
+    setSlugError(null);
     setPublishedPrint(null);
     setError(null);
-    getPublishedId(sb, projectId)
-      .then((id) => {
-        if (!cancelled) setSiteId(id);
+    getPublishedInfo(sb, projectId)
+      .then((info) => {
+        if (cancelled) return;
+        setSiteId(info?.id ?? null);
+        setSlug(info?.slug ?? null);
+        setSlugInput(info?.slug ?? "");
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Could not check publishing.");
@@ -43,7 +53,7 @@ export default function PublishBar({ sb, projectId, name, files, disabled }: Pro
     };
   }, [sb, projectId]);
 
-  const url = siteId && typeof window !== "undefined" ? siteUrl(window.location.origin, siteId) : "";
+  const url = siteId && typeof window !== "undefined" ? siteUrl(window.location.origin, slug ?? siteId) : "";
   const changed = siteId !== null && publishedPrint !== null && publishedPrint !== filesFingerprint(files);
 
   async function publish() {
@@ -68,11 +78,27 @@ export default function PublishBar({ sb, projectId, name, files, disabled }: Pro
     try {
       await unpublishSite(sb, projectId);
       setSiteId(null);
+      setSlug(null);
+      setSlugInput("");
       setPublishedPrint(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not unpublish.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function saveSlug() {
+    setSlugBusy(true);
+    setSlugError(null);
+    try {
+      const saved = await setSiteSlug(sb, projectId, slugInput);
+      setSlug(saved);
+      setSlugInput(saved ?? "");
+    } catch (err) {
+      setSlugError(err instanceof Error ? err.message : "Could not save the link name.");
+    } finally {
+      setSlugBusy(false);
     }
   }
 
@@ -137,6 +163,44 @@ export default function PublishBar({ sb, projectId, name, files, disabled }: Pro
                 <a href={url} target="_blank" rel="noreferrer" aria-label="Open site" data-tip="Open site" className="icon-btn tip tip-right h-6 w-6">
                   <ExternalLink size={14} />
                 </a>
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="link-name" className="text-xs text-white/50">
+                  Link name
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 flex-1 items-center rounded-btn border border-line bg-white/5 pl-2 text-xs text-white/40 focus-within:border-indigo-400">
+                    <span className="shrink-0">/s/</span>
+                    <input
+                      id="link-name"
+                      value={slugInput}
+                      onChange={(e) => {
+                        setSlugInput(normalizeSlug(e.target.value).slice(0, 40));
+                        setSlugError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void saveSlug();
+                      }}
+                      placeholder="my-coffee-shop"
+                      maxLength={40}
+                      spellCheck={false}
+                      autoCapitalize="none"
+                      className="min-w-0 flex-1 bg-transparent py-1 pl-1 pr-2 text-xs text-white outline-none placeholder:text-white/30"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={saveSlug}
+                    disabled={slugBusy || slugInput === (slug ?? "") || (slugInput !== "" && checkSlug(slugInput) !== null)}
+                    className="btn h-6 px-2 text-xs"
+                  >
+                    {slugBusy ? <Loader2 size={12} className="animate-spin" /> : "Save"}
+                  </button>
+                </div>
+                {slugError && <p className="text-xs text-amber-300">{slugError}</p>}
+                {!slugError && slugInput !== "" && slugInput !== (slug ?? "") && checkSlug(slugInput) && (
+                  <p className="text-xs text-white/40">{checkSlug(slugInput)}</p>
+                )}
               </div>
               <button
                 type="button"
