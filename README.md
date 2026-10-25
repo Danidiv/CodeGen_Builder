@@ -75,7 +75,7 @@ lib/
 ## Next steps
 
 - Deploy to Vercel
-- Backend for generated apps: forms (`submitForm`) and saved data per visitor (`db("tasks")`) are done; visitor login is next
+- Backend for generated apps: forms (`submitForm`), saved data (`db("tasks")`) and visitor accounts (`auth`) are done
 - Done already: usage limits (`DAILY_LIMIT`, run `supabase/schema.sql` again once), templates, Code tab edits are saved
 
 ## Notes
@@ -152,3 +152,13 @@ sees its own items. Limits: 5000 characters and 30 fields per item, 200 items pe
 60 writes per minute per site. In the preview inside NEXA AI the data stays in the browser (test mode). The owner
 sees and can delete everything under Inbox > Saved data. Run `supabase/schema.sql` again once, then `notify pgrst, 'reload schema';`.
 Unpublishing a site deletes its form messages and saved data.
+
+## Visitor accounts (backend step 3)
+
+Generated apps can have real sign up / login with `import { auth } from "./nexa"` (`me`, `signUp`, `signIn`, `signOut`).
+Accounts live in `site_users` (bcrypt hashes), separate from your NEXA AI accounts, and are only reachable through database
+functions (`user_signup`, `user_login`, `user_me`, `user_logout`); 5 wrong passwords lock an email for 15 minutes.
+A logged-in user's `db()` items are tied to the account (a private data key), so they follow the user to other devices.
+Not there yet: email verification and password reset (no email system). Owner: Inbox > Users lists and deletes accounts.
+Run `supabase/visitor_login.sql` once (after `saved_data.sql`), then `notify pgrst, 'reload schema';`.
+In the preview inside NEXA AI, accounts are test accounts kept in the NEXA AI page (plain text, never use real passwords there).

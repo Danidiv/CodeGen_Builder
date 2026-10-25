@@ -62,7 +62,7 @@ export default function PublishBar({ sb, projectId, name, files, disabled }: Pro
   }
 
   async function unpublish() {
-    if (!window.confirm("Unpublish this site? The public link will stop working, and the form messages and saved data of this site will be deleted.")) return;
+    if (!window.confirm("Unpublish this site? The public link will stop working, and the form messages, visitor accounts and saved data of this site will be deleted.")) return;
     setBusy(true);
     setError(null);
     try {

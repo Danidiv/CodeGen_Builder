@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Download, Inbox, Loader2, RefreshCw, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { getPublishedId } from "@/lib/publish";
+import { SiteUser, deleteSiteUser, listSiteUsers } from "@/lib/siteUsers";
 import { DataRecord, Submission, deleteRecord, deleteSubmission, listRecords, listSubmissions, toCsv } from "@/lib/submissions";
 import { IconButton } from "./ui";
 
@@ -18,7 +19,8 @@ function formatTime(iso: string): string {
 export default function InboxDrawer({ sb, projectId, projectName, open, onClose }: Props) {
   const [rows, setRows] = useState<Submission[]>([]);
   const [records, setRecords] = useState<DataRecord[]>([]);
-  const [tab, setTab] = useState<"forms" | "data">("forms");
+  const [users, setUsers] = useState<SiteUser[]>([]);
+  const [tab, setTab] = useState<"forms" | "data" | "users">("forms");
   const [published, setPublished] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +33,7 @@ export default function InboxDrawer({ sb, projectId, projectName, open, onClose 
       setPublished(siteId !== null);
       setRows(siteId ? await listSubmissions(sb, siteId) : []);
       setRecords(siteId ? await listRecords(sb, siteId) : []);
+      setUsers(siteId ? await listSiteUsers(sb, siteId).catch(() => []) : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load the inbox.");
     } finally {
@@ -64,6 +67,17 @@ export default function InboxDrawer({ sb, projectId, projectName, open, onClose 
     try {
       await deleteRecord(sb, id);
       setRecords((r) => r.filter((x) => x.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete.");
+    }
+  }
+
+  async function removeUser(u: SiteUser) {
+    if (!window.confirm(`Delete the account ${u.email} and its saved data?`)) return;
+    try {
+      await deleteSiteUser(sb, u.id);
+      setUsers((x) => x.filter((y) => y.id !== u.id));
+      setRecords((x) => x); // the saved data of that user disappears on the next refresh
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete.");
     }
@@ -110,6 +124,7 @@ export default function InboxDrawer({ sb, projectId, projectName, open, onClose 
             [
               { id: "forms", label: `Forms (${rows.length})` },
               { id: "data", label: `Saved data (${records.length})` },
+              { id: "users", label: `Users (${users.length})` },
             ] as const
           ).map((t) => (
             <button
@@ -179,6 +194,23 @@ export default function InboxDrawer({ sb, projectId, projectName, open, onClose 
                     </div>
                   ))}
                 </dl>
+              </article>
+            ))}
+          {!error && published && tab === "users" && users.length === 0 && !loading && (
+            <p className="px-2 py-4 text-sm text-white/60">
+              No accounts yet. Apps with a login or sign-up show their users here once visitors register on the published site. In the preview inside NEXA AI the accounts are test accounts and are not listed.
+            </p>
+          )}
+          {tab === "users" &&
+            users.map((u) => (
+              <article key={u.id} className="card flex items-center gap-2 p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-white/90">{u.email}</p>
+                  <p className="text-xs text-white/40">Joined {formatTime(u.created_at)}</p>
+                </div>
+                <IconButton label="Delete account" onClick={() => void removeUser(u)} tip="right" className="h-6 w-6">
+                  <Trash2 size={14} />
+                </IconButton>
               </article>
             ))}
         </div>
