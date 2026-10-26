@@ -11,6 +11,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
     "@codesandbox/sandpack-react": "^2.19.10",
+    "@monaco-editor/react": "^4.6.0",
     "@supabase/supabase-js": "^2.45.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.460.0",

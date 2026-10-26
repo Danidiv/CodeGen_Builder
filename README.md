@@ -36,7 +36,7 @@ What you get: sign up / sign in, a project switcher (+ New, Delete), automatic s
 3. `app/api/generate/route.ts` calls Claude and streams the answer back.
 4. Claude answers with `<file path="/App.tsx">...</file>` blocks (see `lib/prompts.ts`).
 5. `lib/parseFiles.ts` parses the stream chunk by chunk and updates the files.
-6. `components/Preview.tsx` runs the files live with Sandpack (Preview and Code tabs).
+6. `components/Preview.tsx` runs the files live with Sandpack (Preview and Code tabs). The Code tab uses the Monaco editor (`components/CodeEditor.tsx`, loaded from the jsDelivr CDN on first use; if it cannot load, the old Sandpack editor is shown). Run `npm install` once after updating, because `@monaco-editor/react` is a new package.
 
 Follow-up messages ("make the button bigger") work because the current files are sent with each request and Claude only returns the files it changes.
 

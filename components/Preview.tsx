@@ -4,11 +4,11 @@ import {
   SandpackProvider,
   SandpackLayout,
   SandpackPreview,
-  SandpackCodeEditor,
   SandpackFileExplorer,
   useSandpack,
 } from "@codesandbox/sandpack-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import CodeEditor from "./CodeEditor";
 import { detectDependencies } from "@/lib/deps";
 import { runTestOp, type TestMsg } from "@/lib/testDb";
 import { backendFiles } from "@/lib/backend";
@@ -313,7 +313,7 @@ export default function Preview({ files, onError, busy = false, onFilesEdit, tab
           <div style={{ position: "absolute", inset: 0, display: tab === "code" ? "block" : "none" }}>
             <SandpackLayout style={{ height: "100%", border: 0, borderRadius: 0 }}>
               <SandpackFileExplorer style={{ height: "100%", minWidth: 160 }} />
-              <SandpackCodeEditor showLineNumbers style={{ height: "100%", flex: 1 }} />
+              <CodeEditor readOnly={busy} />
             </SandpackLayout>
           </div>
         </SandpackProvider>
