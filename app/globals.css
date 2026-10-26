@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  color-scheme: dark;
+}
+
+/* Native dropdown lists would otherwise show light text on a light list. */
+select option {
+  background: #171b24;
+  color: #e6e8ee;
+}
+
 html,
 body {
   height: 100%;

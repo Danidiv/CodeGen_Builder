@@ -268,6 +268,20 @@ function UserEditor({ sb, u, onDone }: { sb: NonNullable<typeof supabase>; u: Us
   const [note, setNote] = useState(u.note ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [delOpen, setDelOpen] = useState(false);
+  const [delText, setDelText] = useState("");
+
+  async function remove() {
+    setBusy(true);
+    setError(null);
+    try {
+      await adminCall(sb, "admin_delete_user", { p_user: u.id });
+      onDone(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete.");
+      setBusy(false);
+    }
+  }
 
   async function save() {
     const n = limit.trim() === "" ? null : Number(limit);
@@ -307,6 +321,28 @@ function UserEditor({ sb, u, onDone }: { sb: NonNullable<typeof supabase>; u: Us
         <input id={`ban-${u.id}`} type="checkbox" checked={banned} disabled={u.is_admin} onChange={(e) => setBanned(e.target.checked)} />
         Ban (stops all AI requests)
       </label>
+      {!u.is_admin && (
+        <div className="space-y-2 border-t border-line pt-3 md:col-span-4">
+          {!delOpen ? (
+            <button className="btn btn-ghost text-red-300 hover:text-red-200" disabled={busy} onClick={() => setDelOpen(true)}>
+              Delete this account...
+            </button>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="w-full text-xs text-white/60">
+                This deletes the account for good, with all its projects, published sites and saved data. It cannot be undone. Type the email to confirm.
+              </p>
+              <input id={`del-${u.id}`} className="input w-64" placeholder={u.email ?? "email"} value={delText} onChange={(e) => setDelText(e.target.value)} />
+              <button className="btn btn-danger" disabled={busy || delText.trim().toLowerCase() !== (u.email ?? "").toLowerCase() || !u.email} onClick={remove}>
+                Delete forever
+              </button>
+              <button className="btn btn-ghost" disabled={busy} onClick={() => { setDelOpen(false); setDelText(""); }}>
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-2 md:col-span-3 md:justify-end">
         {error && <span className="text-xs text-red-300">{error}</span>}
         <button className="btn btn-ghost" onClick={() => onDone(false)} disabled={busy}>

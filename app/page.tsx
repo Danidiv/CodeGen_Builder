@@ -141,7 +141,25 @@ export default function Home() {
   const rowRef = useRef<HTMLDivElement>(null);
   const [bgTheme, setBgTheme] = useState("aurora");
   // "home" = start page with all projects; "project" = the editor.
-  const [view, setView] = useState<"home" | "project">("project");
+  const [view, setViewState] = useState<"home" | "project">("project");
+  // Remember where the person is for this tab: a refresh keeps the start page (or the project),
+  // and a fresh sign-in always starts on the start page.
+  function setView(v: "home" | "project") {
+    setViewState(v);
+    try {
+      sessionStorage.setItem("nexa-view", v);
+    } catch {
+      // ignore
+    }
+  }
+  useEffect(() => {
+    if (!supabase) return;
+    try {
+      setViewState(sessionStorage.getItem("nexa-view") === "project" ? "project" : "home");
+    } catch {
+      setViewState("home");
+    }
+  }, []);
   const [pending, setPending] = useState<{ text: string; files: Attachment[] } | null>(null);
 
   // Cloud (Supabase) state. Without Supabase config none of this is used and the
@@ -546,6 +564,12 @@ export default function Home() {
       // sign out anyway
     }
     await sb.auth.signOut();
+    try {
+      sessionStorage.removeItem("nexa-view");
+    } catch {
+      // ignore
+    }
+    setViewState("home");
   }
 
   // ---------------------------------------------------------------------------

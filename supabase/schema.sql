@@ -1180,6 +1180,30 @@ begin
 end;
 $$;
 
+-- Deletes a user for good: their projects, published sites (with forms, accounts, saved data),
+-- usage and settings all go with them (every table cascades from auth.users).
+create or replace function public.admin_delete_user(p_user uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text;
+begin
+  if not public.is_admin() then raise exception 'not allowed'; end if;
+  if p_user = auth.uid() then raise exception 'you cannot delete your own account here'; end if;
+  if exists (select 1 from public.admin_users where user_id = p_user) then
+    raise exception 'an admin cannot be deleted';
+  end if;
+  select email into v_email from auth.users where id = p_user;
+  if not found then raise exception 'user not found'; end if;
+  delete from auth.users where id = p_user;
+  insert into public.admin_log (admin_id, action, target, detail)
+  values (auth.uid(), 'delete_user', p_user::text, v_email);
+end;
+$$;
+
 revoke all on function public.is_admin() from public, anon;
 revoke all on function public.admin_overview() from public, anon;
 revoke all on function public.admin_daily(int) from public, anon;
@@ -1192,6 +1216,7 @@ revoke all on function public.admin_reports(int) from public, anon;
 revoke all on function public.admin_unpublish(text, boolean) from public, anon;
 revoke all on function public.admin_clear_reports(text) from public, anon;
 revoke all on function public.admin_log_list(int) from public, anon;
+revoke all on function public.admin_delete_user(uuid) from public, anon;
 grant execute on function public.is_admin() to authenticated;
 grant execute on function public.admin_overview() to authenticated;
 grant execute on function public.admin_daily(int) to authenticated;
@@ -1204,6 +1229,7 @@ grant execute on function public.admin_reports(int) to authenticated;
 grant execute on function public.admin_unpublish(text, boolean) to authenticated;
 grant execute on function public.admin_clear_reports(text) to authenticated;
 grant execute on function public.admin_log_list(int) to authenticated;
+grant execute on function public.admin_delete_user(uuid) to authenticated;
 
 notify pgrst, 'reload schema';
 
