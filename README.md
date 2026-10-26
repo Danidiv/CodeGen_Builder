@@ -167,3 +167,23 @@ In the preview inside NEXA AI, accounts are test accounts kept in the NEXA AI pa
 
 After publishing, the Publish menu has a "Link name" field: `/s/my-coffee-shop` instead of `/s/3f9a1c7b2e`
 (3-40 letters, numbers, single hyphens; unique across all sites). Needs `supabase/site_slug.sql` once. The old id link keeps working.
+
+
+## Admin dashboard (`/admin`)
+
+Only people listed in `admin_users` can open it. Everything runs through database functions that check `is_admin()`, so no service-role key is needed.
+
+1. Run `supabase/admin.sql` in the Supabase SQL Editor (it is also the end of `schema.sql`).
+2. Make yourself admin (put your login email inside the quotes, run once):
+
+```sql
+insert into public.admin_users (user_id)
+select id from auth.users where lower(email) = lower('PUT-YOUR-EMAIL-HERE')
+on conflict do nothing;
+```
+
+3. Sign out and in again. The avatar menu now has **Admin dashboard**.
+
+What it shows: users, who came back, requests, builds, kinds of sites and used features, live sites and reports. You can set a user's plan or own daily limit, ban a user, take a site offline (optionally block the project), and read the admin log.
+
+Tracking saves only what happened (build, publish, download, login, limit reached) and yes/no flags (forms, saved data, login, reference URL). It never saves the text people write. Pro plan default limit is 300 per day: change the `300` inside `consume_usage` and `get_usage` in `admin.sql`.

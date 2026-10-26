@@ -29,7 +29,11 @@ export async function POST(req: Request) {
     try {
       const limit = parseLimit(process.env.DAILY_LIMIT);
       const usage = await callUsage(sb, limit, true);
-      if (!usage.allowed) return new Response(limitMessage(usage), { status: 429 });
+      if (!usage.allowed) {
+        // Count how often people hit the limit (the dashboard shows it). Never blocks the answer.
+        void Promise.resolve(sb.rpc("track_event", { p_kind: "limit_hit", p_meta: { banned: usage.banned === true } })).then(() => {}, () => {});
+        return new Response(limitMessage(usage), { status: 429 });
+      }
       usageHeaders = { "X-Usage-Used": String(usage.used), "X-Usage-Limit": String(usage.limit) };
     } catch (err) {
       return new Response(err instanceof Error ? err.message : "Usage check failed.", { status: 500 });

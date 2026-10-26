@@ -30,6 +30,7 @@ import { isMultiSiteRequest } from "@/lib/siteTypes";
 import { BRIEF_SEP, extractUrl } from "@/lib/urlRef";
 import { MAX_VERSIONS, Version, makeVersion } from "@/lib/versions";
 import { supabase } from "@/lib/supabase";
+import { buildMeta, track } from "@/lib/track";
 import {
   DEFAULT_PROJECT_NAME,
   ProjectData,
@@ -589,6 +590,35 @@ export default function Home() {
 
   // Show today's usage as soon as the user is signed in.
   const accessToken = session?.access_token ?? null;
+  // Admins get a link to the dashboard; everybody else never sees it (the database decides, not this page).
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    const sb = supabase;
+    if (!sb || !userId) {
+      setIsAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    Promise.resolve(sb.rpc("is_admin")).then(
+      ({ data }) => {
+        if (!cancelled) setIsAdmin(data === true);
+      },
+      () => {}
+    );
+    // One "login" mark per person and day: shows who comes back.
+    try {
+      const day = new Date().toISOString().slice(0, 10);
+      if (localStorage.getItem("nexa-login-day") !== day + userId) {
+        localStorage.setItem("nexa-login-day", day + userId);
+        track("login");
+      }
+    } catch {
+      /* ignore */
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
   useEffect(() => {
     if (!cloud || !accessToken) {
       setUsage(null);
@@ -691,6 +721,7 @@ export default function Home() {
   async function handleDownload() {
     try {
       await downloadProjectZip(files);
+      track("download");
     } catch (err) {
       window.alert("Could not create the ZIP: " + (err instanceof Error ? err.message : "unknown error"));
     }
@@ -1047,6 +1078,7 @@ export default function Home() {
         const nextFiles = { ...baseFiles, ...(await withPhotos(result.files)) };
         setFiles(nextFiles);
         pushVersion(versionLabel ?? (text.length > 48 ? text.slice(0, 48) + "..." : text), nextFiles);
+        track("build", buildMeta({ files: nextFiles, prompt: text, first: baseMessages.length === 0, reference: sentText !== text, fix: versionLabel === "Fix error" || /^Auto-fix/.test(versionLabel ?? "") }));
         reply = reply || "Done. Check the preview.";
         if (result.problem) {
           reply += `\n\n⚠️ Please check the result: ${result.problem} You can press Undo.`;
@@ -1055,6 +1087,7 @@ export default function Home() {
         setFiles(baseFiles);
         reply = (reply ? reply + "\n\n" : "") + EMPTY_WARNINGS[result.emptyReason ?? "noCode"];
         kind = "warning";
+        track("build_fail", { reason: result.emptyReason ?? "noCode" });
       }
       setMessages([...chatHistory, { role: "assistant", content: reply, ...(kind ? { kind } : {}) }]);
       // Auto-fix may react to preview errors, but only after a change was really applied.
@@ -1069,6 +1102,7 @@ export default function Home() {
         ]);
       } else {
         const msg = err instanceof Error ? err.message : "Something went wrong";
+        track("build_fail", { reason: /daily limit/i.test(msg) ? "limit" : "error" });
         const friendly = /failed to fetch|networkerror|load failed/i.test(msg)
           ? "Could not reach the server. Check that npm run dev is still running and your internet works."
           : msg;
@@ -1178,6 +1212,7 @@ export default function Home() {
         onNew={cloud ? undefined : handleNewProject}
         onSignOut={cloud ? handleSignOut : undefined}
         onInbox={supabase && projectId ? () => setInboxOpen(true) : undefined}
+        isAdmin={isAdmin}
         onHome={cloud && !showHome ? () => setView("home") : undefined}
         bgTheme={bgTheme}
         onBgTheme={changeBgTheme}

@@ -2,7 +2,7 @@
 
 export const DEFAULT_DAILY_LIMIT = 30;
 
-export type Usage = { allowed: boolean; used: number; limit: number };
+export type Usage = { allowed: boolean; used: number; limit: number; banned?: boolean };
 
 /** DAILY_LIMIT from the environment. 0 = unlimited. Missing or invalid = default. */
 export function parseLimit(raw: string | undefined): number {
@@ -13,6 +13,7 @@ export function parseLimit(raw: string | undefined): number {
 }
 
 export function limitMessage(u: Usage): string {
+  if (u.banned) return "This account has been suspended. Please contact support.";
   return (
     `Daily limit reached (${u.used} of ${u.limit} AI requests used today). ` +
     `It resets at 05:00 Pakistan time (00:00 UTC). You can still edit code and use History.`
@@ -32,7 +33,8 @@ export async function callUsage(sb: RpcClient, limit: number, consume: boolean):
     }
     throw new Error("Usage check failed: " + error.message);
   }
-  const d = data as Partial<Usage> | null;
+  const d = data as (Partial<Usage> & { banned?: boolean }) | null;
   if (!d || typeof d.used !== "number") throw new Error("Usage check returned an unexpected answer.");
-  return { allowed: d.allowed !== false, used: d.used, limit };
+  // The database knows the user's own plan / limit; use its number when it sends one.
+  return { allowed: d.allowed !== false, used: d.used, limit: typeof d.limit === "number" ? d.limit : limit, banned: d.banned === true };
 }

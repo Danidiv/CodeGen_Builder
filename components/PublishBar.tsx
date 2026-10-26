@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Check, ChevronDown, Copy, ExternalLink, Globe, Loader2, RefreshCw, Unplug } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useDismiss } from "./ui";
+import { track } from "@/lib/track";
 import { checkSlug, filesFingerprint, getPublishedInfo, normalizeSlug, publishSite, setSiteSlug, siteUrl, unpublishSite } from "@/lib/publish";
 
 type Props = {
@@ -64,6 +65,7 @@ export default function PublishBar({ sb, projectId, name, files, disabled }: Pro
       setSiteId(id);
       setPublishedPrint(filesFingerprint(files));
       setOpen(true);
+      track("publish");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not publish.");
     } finally {
@@ -77,6 +79,7 @@ export default function PublishBar({ sb, projectId, name, files, disabled }: Pro
     setError(null);
     try {
       await unpublishSite(sb, projectId);
+      track("unpublish");
       setSiteId(null);
       setSlug(null);
       setSlugInput("");
