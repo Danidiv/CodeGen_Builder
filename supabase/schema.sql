@@ -1231,6 +1231,114 @@ grant execute on function public.admin_clear_reports(text) to authenticated;
 grant execute on function public.admin_log_list(int) to authenticated;
 grant execute on function public.admin_delete_user(uuid) to authenticated;
 
+-- ---------------------------------------------------------------------------
+-- Feedback from users, and the "would you pay for more?" answer at the daily limit.
+-- ---------------------------------------------------------------------------
+create table if not exists public.feedback (
+  id         bigint generated always as identity primary key,
+  user_id    uuid references auth.users (id) on delete set null,
+  kind       text not null check (kind in ('idea', 'problem', 'other', 'upgrade')),
+  message    text not null default '',
+  choice     text,
+  done       boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists feedback_created_idx on public.feedback (created_at desc);
+alter table public.feedback enable row level security;      -- no policies
+
+-- Signed-in users send feedback. At most 10 per day; one "upgrade" answer per day.
+create or replace function public.submit_feedback(p_kind text, p_message text, p_choice text default null)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  msg text := left(trim(coalesce(p_message, '')), 1000);
+  ch  text := nullif(left(trim(coalesce(p_choice, '')), 60), '');
+begin
+  if uid is null then raise exception 'not signed in'; end if;
+  if p_kind not in ('idea', 'problem', 'other', 'upgrade') then raise exception 'unknown kind'; end if;
+  if p_kind = 'upgrade' then
+    if ch is null and msg = '' then raise exception 'please choose an answer'; end if;
+    if exists (select 1 from public.feedback where user_id = uid and kind = 'upgrade'
+               and created_at > now() - interval '1 day') then
+      return;
+    end if;
+  else
+    if length(msg) < 3 then raise exception 'please write a few words'; end if;
+  end if;
+  if (select count(*) from public.feedback where user_id = uid and created_at > now() - interval '1 day') >= 10 then
+    raise exception 'Too many messages today. Please try again tomorrow.';
+  end if;
+  insert into public.feedback (user_id, kind, message, choice) values (uid, p_kind, msg, ch);
+  insert into public.events (user_id, kind, meta) values (uid, 'feedback', jsonb_build_object('kind', p_kind));
+end;
+$$;
+
+create or replace function public.admin_feedback_list(p_kind text default null, p_limit int default 100)
+returns json
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then raise exception 'not allowed'; end if;
+  return (
+    select coalesce(json_agg(row_to_json(t)), '[]'::json) from (
+      select f.id, f.kind, f.message, f.choice, f.done, f.created_at, u.email
+      from public.feedback f left join auth.users u on u.id = f.user_id
+      where p_kind is null or f.kind = p_kind
+      order by f.done, f.created_at desc
+      limit greatest(1, least(coalesce(p_limit, 100), 300))
+    ) t
+  );
+end;
+$$;
+
+-- How people answered "would you pay for more?" (count per answer).
+create or replace function public.admin_upgrade_summary()
+returns json
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then raise exception 'not allowed'; end if;
+  return (
+    select coalesce(json_agg(row_to_json(t)), '[]'::json) from (
+      select coalesce(choice, 'other') as choice, count(*) as n
+      from public.feedback where kind = 'upgrade'
+      group by 1 order by 2 desc
+    ) t
+  );
+end;
+$$;
+
+create or replace function public.admin_feedback_done(p_id bigint, p_done boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then raise exception 'not allowed'; end if;
+  update public.feedback set done = coalesce(p_done, false) where id = p_id;
+end;
+$$;
+
+revoke all on function public.submit_feedback(text, text, text) from public, anon;
+revoke all on function public.admin_feedback_list(text, int) from public, anon;
+revoke all on function public.admin_upgrade_summary() from public, anon;
+revoke all on function public.admin_feedback_done(bigint, boolean) from public, anon;
+grant execute on function public.submit_feedback(text, text, text) to authenticated;
+grant execute on function public.admin_feedback_list(text, int) to authenticated;
+grant execute on function public.admin_upgrade_summary() to authenticated;
+grant execute on function public.admin_feedback_done(bigint, boolean) to authenticated;
+
 notify pgrst, 'reload schema';
 
 -- ---------------------------------------------------------------------------

@@ -6,13 +6,14 @@ import { ArrowLeft, RefreshCw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
   adminCall, fmtDate, nf, pct,
-  type DayRow, type Features, type LogRow, type Overview, type ReportRow, type SiteRow, type TypeRow, type UserRow,
+  type DayRow, type Features, type FeedbackRow, type LogRow, type Overview, type ReportRow, type SiteRow, type TypeRow, type UserRow,
 } from "@/lib/admin";
 
-type TabId = "overview" | "users" | "sites" | "log";
+type TabId = "overview" | "users" | "feedback" | "sites" | "log";
 const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "users", label: "Users" },
+  { id: "feedback", label: "Feedback" },
   { id: "sites", label: "Sites and reports" },
   { id: "log", label: "Admin log" },
 ];
@@ -595,6 +596,89 @@ function SitesTab({ sb }: { sb: NonNullable<typeof supabase> }) {
   );
 }
 
+function FeedbackTab({ sb }: { sb: NonNullable<typeof supabase> }) {
+  const [rows, setRows] = useState<FeedbackRow[] | null>(null);
+  const [summary, setSummary] = useState<{ choice: string; n: number }[]>([]);
+  const [filter, setFilter] = useState<"all" | "idea" | "problem" | "other">("all");
+  const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    let off = false;
+    Promise.all([
+      adminCall<FeedbackRow[]>(sb, "admin_feedback_list", { p_kind: null, p_limit: 200 }),
+      adminCall<{ choice: string; n: number }[]>(sb, "admin_upgrade_summary"),
+    ])
+      .then(([r, s]) => {
+        if (off) return;
+        setRows(r);
+        setSummary(s);
+      })
+      .catch((e) => !off && setError(e instanceof Error ? e.message : "Could not load."));
+    return () => {
+      off = true;
+    };
+  }, [sb, tick]);
+
+  async function mark(id: number, done: boolean) {
+    try {
+      await adminCall(sb, "admin_feedback_done", { p_id: id, p_done: done });
+      setTick((t) => t + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed.");
+    }
+  }
+
+  if (error) return <p className="card p-4 text-sm text-red-300">{error}</p>;
+  if (!rows) return <p className="text-sm text-white/50">Loading...</p>;
+
+  const messages = rows.filter((r) => r.kind !== "upgrade" && (filter === "all" || r.kind === filter));
+  const answers = rows.filter((r) => r.kind === "upgrade");
+  const total = summary.reduce((a, b) => a + b.n, 0);
+
+  return (
+    <div className="space-y-8">
+      <Section title="Would you pay for more?" note="Asked once a day when someone uses up the free requests. One answer per person per day.">
+        <RankBars rows={summary.map((s) => ({ label: s.choice, n: s.n, extra: pct(s.n, total) }))} empty="No answers yet. They appear when a user reaches the daily limit." />
+        {answers.length > 0 && <p className="text-xs text-white/40">{nf(answers.length)} answers in total.</p>}
+      </Section>
+
+      <Section
+        title="Messages"
+        right={
+          <select id="fb-filter" className="input" value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} aria-label="Type">
+            <option value="all">All types</option>
+            <option value="idea">Ideas</option>
+            <option value="problem">Problems</option>
+            <option value="other">Other</option>
+          </select>
+        }
+      >
+        <div className="card divide-y divide-line">
+          {messages.map((r) => (
+            <div key={r.id} className={`space-y-1 px-4 py-3 text-sm ${r.done ? "opacity-50" : ""}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="flex items-center gap-2">
+                  <span className={`rounded px-1.5 text-[11px] ${r.kind === "problem" ? "bg-red-500/30 text-red-200" : r.kind === "idea" ? "bg-accent/30 text-white" : "bg-white/10 text-white/70"}`}>{r.kind}</span>
+                  <span className="text-xs text-white/50">{r.email ?? "deleted user"}</span>
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="text-xs text-white/40">{fmtDate(r.created_at)}</span>
+                  <button className="btn btn-ghost" onClick={() => mark(r.id, !r.done)}>
+                    {r.done ? "Reopen" : "Mark done"}
+                  </button>
+                </span>
+              </div>
+              <p className="whitespace-pre-wrap break-words text-white/90">{r.message}</p>
+            </div>
+          ))}
+          {messages.length === 0 && <p className="p-4 text-sm text-white/40">No messages yet. Users send them from the avatar menu, Send feedback.</p>}
+        </div>
+      </Section>
+    </div>
+  );
+}
+
 function LogTab({ sb }: { sb: NonNullable<typeof supabase> }) {
   const [rows, setRows] = useState<LogRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -683,6 +767,7 @@ export default function AdminPage() {
         </nav>
         {tab === "overview" && <OverviewTab sb={supabase} />}
         {tab === "users" && <UsersTab sb={supabase} />}
+        {tab === "feedback" && <FeedbackTab sb={supabase} />}
         {tab === "sites" && <SitesTab sb={supabase} />}
         {tab === "log" && <LogTab sb={supabase} />}
       </>

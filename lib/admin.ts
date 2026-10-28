@@ -20,6 +20,7 @@ export type UserRow = {
 };
 export type SiteRow = { id: string; slug: string | null; name: string; project_id: string; email: string | null; published_at: string; reports: number; blocked: boolean };
 export type ReportRow = { id: number; site_id: string; reason: string; created_at: string };
+export type FeedbackRow = { id: number; kind: "idea" | "problem" | "other" | "upgrade"; message: string; choice: string | null; done: boolean; created_at: string; email: string | null };
 export type LogRow = { id: number; action: string; target: string | null; detail: string | null; created_at: string; admin_email: string | null };
 
 /** Calls one admin function. Every function checks on the database side that you are an admin. */

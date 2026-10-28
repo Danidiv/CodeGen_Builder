@@ -187,3 +187,15 @@ on conflict do nothing;
 What it shows: users, who came back, requests, builds, kinds of sites and used features, live sites and reports. You can set a user's plan or own daily limit, ban a user, take a site offline (optionally block the project), and read the admin log.
 
 Tracking saves only what happened (build, publish, download, login, limit reached) and yes/no flags (forms, saved data, login, reference URL). It never saves the text people write. Pro plan default limit is 300 per day: change the `300` inside `consume_usage` and `get_usage` in `admin.sql`.
+
+### Feedback and "would you pay?"
+
+- Avatar menu, **Send feedback**: a small form (Idea / Problem / Other). Messages appear in `/admin`, tab **Feedback**, where you can mark them done.
+- When a user uses up the daily requests, the top of the chat asks once a day what they would pay ($5, $10, $20 per month, or no). The answers are counted in `/admin`, tab **Feedback**. Both need `supabase/admin.sql` to be run again (safe).
+
+
+## Forgot password
+
+The login form has **Forgot password?**. It uses Supabase's own email, so no other service is needed. Once in Supabase:
+Authentication -> URL Configuration: set **Site URL** to your live address (for example `https://your-app.vercel.app`) and add the same address (and `http://localhost:3000` for testing) under **Redirect URLs**. Without this the email link does not come back to your app.
+The free Supabase email service sends only a few emails per hour. If many people need emails, set up your own SMTP later (Authentication -> SMTP Settings).

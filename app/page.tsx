@@ -13,6 +13,7 @@ import { THEMES, THEME_KEY, themeBg } from "@/components/themes";
 import { computeThumb } from "@/lib/thumb";
 import { AlertCircle, MessageSquare, Monitor, Wrench } from "lucide-react";
 import AuthForm from "@/components/AuthForm";
+import NewPassword from "@/components/NewPassword";
 import ProjectsBar, { LocalName, SaveState } from "@/components/ProjectsBar";
 import { DEFAULT_FILES } from "@/lib/prompts";
 import { parseFiles } from "@/lib/parseFiles";
@@ -24,6 +25,8 @@ import { getStyle } from "@/lib/styles";
 import { classifyIntent, smallTalkReply } from "@/lib/intent";
 import { hasImageRefs, resolveImages, type Fetcher } from "@/lib/imageRefs";
 import PublishBar from "@/components/PublishBar";
+import FeedbackModal from "@/components/FeedbackModal";
+import LimitPrompt from "@/components/LimitPrompt";
 import type { Attachment } from "@/lib/attachments";
 import { TEMPLATES, getTemplate } from "@/lib/templates";
 import { isMultiSiteRequest } from "@/lib/siteTypes";
@@ -167,6 +170,8 @@ export default function Home() {
   const cloud = supabase !== null;
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!cloud);
+  // True after the person opened the link of the "reset password" email.
+  const [recovering, setRecovering] = useState(false);
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState(DEFAULT_PROJECT_NAME);
@@ -410,7 +415,16 @@ export default function Home() {
       .then(({ data }) => setSession(data.session))
       .catch(() => {})
       .finally(() => setAuthReady(true));
-    const { data } = sb.auth.onAuthStateChange((_event, s) => setSession(s));
+    // The reset-password link comes back with #...type=recovery: ask for the new password first.
+    try {
+      if (/type=recovery/.test(window.location.hash)) setRecovering(true);
+    } catch {
+      /* ignore */
+    }
+    const { data } = sb.auth.onAuthStateChange((event, s) => {
+      if (event === "PASSWORD_RECOVERY") setRecovering(true);
+      setSession(s);
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
@@ -616,6 +630,7 @@ export default function Home() {
   const accessToken = session?.access_token ?? null;
   // Admins get a link to the dashboard; everybody else never sees it (the database decides, not this page).
   const [isAdmin, setIsAdmin] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   useEffect(() => {
     const sb = supabase;
     if (!sb || !userId) {
@@ -1162,6 +1177,9 @@ export default function Home() {
   if (cloud && !authReady) {
     return <div className="flex h-screen items-center justify-center text-sm text-white/60">Loading...</div>;
   }
+  if (cloud && recovering && session) {
+    return <NewPassword onDone={() => setRecovering(false)} />;
+  }
   if (cloud && !session) {
     return <AuthForm />;
   }
@@ -1237,6 +1255,7 @@ export default function Home() {
         onSignOut={cloud ? handleSignOut : undefined}
         onInbox={supabase && projectId ? () => setInboxOpen(true) : undefined}
         isAdmin={isAdmin}
+        onFeedback={supabase ? () => setFeedbackOpen(true) : undefined}
         onHome={cloud && !showHome ? () => setView("home") : undefined}
         bgTheme={bgTheme}
         onBgTheme={changeBgTheme}
@@ -1271,6 +1290,10 @@ export default function Home() {
               style={{ "--chat-w": `${chatWidth}px` } as React.CSSProperties}
               className={`${mobileTab === "chat" ? "flex" : "hidden"} min-h-0 w-full shrink-0 flex-col md:flex md:w-[var(--chat-w)]`}
             >
+              {supabase && usage && usage.limit > 0 && usage.used >= usage.limit && (
+                <LimitPrompt sb={supabase} used={usage.used} limit={usage.limit} />
+              )}
+              <div className="min-h-0 flex-1">
               <Chat
                 messages={messages}
                 loading={loading}
@@ -1282,6 +1305,7 @@ export default function Home() {
                 styleId={styleId}
                 onStyle={changeStyle}
               />
+              </div>
             </section>
 
             <div
@@ -1368,6 +1392,7 @@ export default function Home() {
         </>
       )}
 
+      {supabase && <FeedbackModal sb={supabase} open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />}
       {supabase && projectId && (
         <InboxDrawer sb={supabase} projectId={projectId} projectName={projectName} open={inboxOpen} onClose={() => setInboxOpen(false)} />
       )}

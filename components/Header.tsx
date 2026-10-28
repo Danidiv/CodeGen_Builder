@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Code2, Eye, Inbox, LogOut, Plus, ShieldCheck, User } from "lucide-react";
+import { ArrowLeft, Code2, Eye, Inbox, LogOut, MessageSquare, Plus, ShieldCheck, User } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import UsageBar, { usageLevel } from "./UsageBar";
 import { IconButton, useDismiss } from "./ui";
@@ -30,6 +30,8 @@ type Props = {
   onInbox?: () => void;
   /** True for admins: shows a link to the admin dashboard in the menu. */
   isAdmin?: boolean;
+  /** Opens the feedback form (cloud mode only). */
+  onFeedback?: () => void;
   bgTheme: string;
   onBgTheme: (id: string) => void;
 };
@@ -60,7 +62,7 @@ function Segmented({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
 }
 
 /** ONE top bar: logo + project | Preview/Code | Publish + avatar menu. */
-export default function Header({ projectSlot, showTools, tab, onTab, publishSlot, email, usage, disabled, onNew, onSignOut, onHome, onInbox, isAdmin, bgTheme, onBgTheme }: Props) {
+export default function Header({ projectSlot, showTools, tab, onTab, publishSlot, email, usage, disabled, onNew, onSignOut, onHome, onInbox, isAdmin, onFeedback, bgTheme, onBgTheme }: Props) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useDismiss(box, open, () => setOpen(false));
@@ -153,6 +155,18 @@ export default function Header({ projectSlot, showTools, tab, onTab, publishSlot
                     }}
                   >
                     <Plus size={14} /> New project
+                  </button>
+                )}
+                {onFeedback && (
+                  <button
+                    type="button"
+                    className="menu-item"
+                    onClick={() => {
+                      setOpen(false);
+                      onFeedback();
+                    }}
+                  >
+                    <MessageSquare size={14} /> Send feedback
                   </button>
                 )}
                 {isAdmin && (
