@@ -33,6 +33,7 @@ function decode(s: string): string {
 function looksLikeCode(s: string): boolean {
   if (/^(?:[$€£]|Rs\.?|PKR)\s?\d[\d,.]*(?:\s?\/\s?\w+)?$/i.test(s.trim())) return false; // prices
   if (!/[A-Za-zÀ-ɏ؀-ۿ]{2,}/.test(s)) return true;
+  if (/['"`]\s*\+|\+\s*['"`]/.test(s)) return true; // pieces of string joins in code
   if (/[();=]|=>|&&|\|\||\$\{|^\s*(?:import|export|const|let|return|function)\b/.test(s)) return true;
   if (/^(?:https?:|\/|\.\/|#|image:|data:|mailto:|tel:)/i.test(s.trim())) return true;
   // Tailwind class lists and ids: no spaces inside a token or many tokens with ":" "-" "[".
