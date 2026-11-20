@@ -468,6 +468,30 @@ begin
 end;
 $$;
 
+-- Builds per weekday and 4-hour slot (Pakistan time), for the heat map on the dashboard.
+create or replace function public.admin_heatmap(p_days int default 30)
+returns json
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then raise exception 'not allowed'; end if;
+  return (
+    select coalesce(json_agg(row_to_json(t)), '[]'::json) from (
+      select extract(dow from created_at at time zone 'Asia/Karachi')::int as dow,
+             (extract(hour from created_at at time zone 'Asia/Karachi')::int / 4) as slot,
+             count(*) as n
+        from public.events
+       where kind = 'build'
+         and created_at > now() - make_interval(days => greatest(1, least(coalesce(p_days, 30), 365)))
+       group by 1, 2
+    ) t
+  );
+end;
+$$;
+
 revoke all on function public.is_admin() from public, anon;
 revoke all on function public.admin_overview() from public, anon;
 revoke all on function public.admin_daily(int) from public, anon;
@@ -481,6 +505,7 @@ revoke all on function public.admin_unpublish(text, boolean) from public, anon;
 revoke all on function public.admin_clear_reports(text) from public, anon;
 revoke all on function public.admin_log_list(int) from public, anon;
 revoke all on function public.admin_delete_user(uuid) from public, anon;
+revoke all on function public.admin_heatmap(int) from public, anon;
 grant execute on function public.is_admin() to authenticated;
 grant execute on function public.admin_overview() to authenticated;
 grant execute on function public.admin_daily(int) to authenticated;
@@ -494,6 +519,7 @@ grant execute on function public.admin_unpublish(text, boolean) to authenticated
 grant execute on function public.admin_clear_reports(text) to authenticated;
 grant execute on function public.admin_log_list(int) to authenticated;
 grant execute on function public.admin_delete_user(uuid) to authenticated;
+grant execute on function public.admin_heatmap(int) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Feedback from users, and the "would you pay for more?" answer at the daily limit.

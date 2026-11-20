@@ -13,6 +13,7 @@ const SWATCH: Record<string, string> = {
   warm: "linear-gradient(135deg, #fef3c7 45%, #ea580c 45%)",
   bold: "linear-gradient(135deg, #fde047 50%, #ec4899 50%)",
   corporate: "linear-gradient(135deg, #0f172a 50%, #1d4ed8 50%)",
+  cinematic: "linear-gradient(135deg, #0a0a0a 50%, #22d3ee 50%)",
 };
 
 export function Swatch({ id }: { id: string }) {
@@ -25,7 +26,7 @@ export function Swatch({ id }: { id: string }) {
   );
 }
 
-export default function StyleDropdown({ styleId, onStyle, up = true }: { styleId: string; onStyle: (id: string) => void; up?: boolean }) {
+export default function StyleDropdown({ styleId, onStyle, up = true, align = "left", compact = false }: { styleId: string; onStyle: (id: string) => void; up?: boolean; align?: "left" | "right"; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useDismiss(box, open, () => setOpen(false));
@@ -42,11 +43,11 @@ export default function StyleDropdown({ styleId, onStyle, up = true }: { styleId
         title="Design style for the next answer"
       >
         <Swatch id={current.id} />
-        <span>Style: {current.name}</span>
+        <span>{compact ? "Style" : `Style: ${current.name}`}</span>
         <ChevronDown size={14} className="text-white/50" />
       </button>
       {open && (
-        <div role="listbox" aria-label="Design style" className={`menu absolute left-0 z-50 w-[220px] ${up ? "bottom-full mb-1" : "top-full mt-1"}`}>
+        <div role="listbox" aria-label="Design style" className={`menu absolute ${align === "right" ? "right-0" : "left-0"} z-50 w-[220px] ${up ? "bottom-full mb-1" : "top-full mt-1"}`}>
           {STYLES.map((s) => (
             <button
               key={s.id}

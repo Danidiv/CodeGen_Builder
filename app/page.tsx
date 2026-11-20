@@ -1,5 +1,6 @@
 "use client";
 
+import Splash from "@/components/Splash";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import Chat, { UiMessage } from "@/components/Chat";
@@ -349,6 +350,8 @@ export default function Home() {
 
   // ---- Cloud mode (Supabase) ------------------------------------------------
 
+  const [shot, setShot] = useState<string | null>(null);
+
   function blankData(): ProjectData {
     const h = initialHistory();
     return { files: DEFAULT_FILES, messages: [], versions: h.versions, active: h.active };
@@ -365,6 +368,8 @@ export default function Home() {
     const wanted = typeof data.active === "number" ? data.active : versions.length - 1;
     const active = Math.min(Math.max(wanted, 0), versions.length - 1);
 
+    const loadedShot = (data as { thumb?: { shot?: string } }).thumb?.shot;
+    setShot(typeof loadedShot === "string" ? loadedShot : null);
     setFiles(f);
     setMessages(msgs);
     setHistory({ versions, active });
@@ -374,7 +379,7 @@ export default function Home() {
     setSaveState("idle");
     attemptsRef.current = 0;
     armedRef.current = false;
-    lastSavedRef.current = serializeData({ files: f, messages: msgs, versions, active });
+    lastSavedRef.current = serializeData({ files: f, messages: msgs, versions, active, ...(typeof loadedShot === "string" ? { shot: loadedShot } : {}) });
     setHydrated(true);
   }
 
@@ -490,7 +495,7 @@ export default function Home() {
     const sb = supabase;
     if (!sb || !projectId || !hydrated || loading) return;
 
-    const data: ProjectData = { files, messages, versions: history.versions, active: history.active };
+    const data: ProjectData = { files, messages, versions: history.versions, active: history.active, ...(shot ? { shot } : {}) };
     const serialized = serializeData(data);
     if (serialized === lastSavedRef.current) return;
 
@@ -521,7 +526,7 @@ export default function Home() {
   async function flushSave() {
     const sb = supabase;
     if (!sb || !projectId) return;
-    const data: ProjectData = { files, messages, versions: history.versions, active: history.active };
+    const data: ProjectData = { files, messages, versions: history.versions, active: history.active, ...(shot ? { shot } : {}) };
     const serialized = serializeData(data);
     if (serialized === lastSavedRef.current) return;
     await saveProject(sb, projectId, deriveName(projectName, messages), data);
@@ -1175,7 +1180,7 @@ export default function Home() {
   }
 
   if (cloud && !authReady) {
-    return <div className="flex h-screen items-center justify-center text-sm text-white/60">Loading...</div>;
+    return <Splash />;
   }
   if (cloud && recovering && session) {
     return <NewPassword onDone={() => setRecovering(false)} />;
@@ -1342,6 +1347,9 @@ export default function Home() {
                 onDevice={setDevice}
                 onReload={() => setReloadSignal((n) => n + 1)}
                 onToggleFullscreen={() => setFullscreen((f) => !f)}
+                projectName={projectName}
+                styleId={styleId}
+                onStyle={changeStyle}
               />
               <div className="relative min-h-0 flex-1">
                 <Preview
@@ -1355,6 +1363,9 @@ export default function Home() {
                   reloadSignal={reloadSignal}
                   testScope={projectId ?? "local"}
                   blank={files["/App.tsx"] === DEFAULT_FILES["/App.tsx"]}
+                  onShot={(d) => {
+                    if (files["/App.tsx"] !== DEFAULT_FILES["/App.tsx"]) setShot(d);
+                  }}
                 />
                 {previewError && !loading && (
                   <div className="absolute inset-x-3 bottom-3 z-20 flex items-start gap-3 rounded-card border border-red-400/30 bg-red-950/90 p-3 text-sm shadow-lg">

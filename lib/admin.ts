@@ -9,6 +9,7 @@ export type Overview = {
 };
 export type DayRow = { day: string; new_users: number; active_users: number; requests: number; builds: number; publishes: number };
 export type TypeRow = { type: string; n: number };
+export type HeatRow = { dow: number; slot: number; n: number };
 export type Features = {
   builds: number; forms: number; data: number; login: number; reference: number; autofix: number;
   failed: number; publishes: number; downloads: number; limit_hits: number; feedback: number;

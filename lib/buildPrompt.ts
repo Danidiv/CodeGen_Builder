@@ -17,7 +17,7 @@ function isErrorFixRequest(text: string): boolean {
  * stored as one-line summaries without code, and small models copy that
  * pattern: they answer with one sentence and never output any files.
  */
-export function buildUserPrompt(messages: ChatMessage[], files: Record<string, string>, style = "", attachments: Attachment[] = []): string {
+export function buildUserPrompt(messages: ChatMessage[], files: Record<string, string>, style = "", attachments: Attachment[] = [], dna = ""): string {
   const userTexts = messages.filter((m) => m.role === "user").map((m) => m.content);
   const request = userTexts[userTexts.length - 1] ?? "";
 
@@ -48,6 +48,7 @@ export function buildUserPrompt(messages: ChatMessage[], files: Record<string, s
   parts.push(
     `NEW REQUEST:\n${request}\n\n` +
       (style ? `DESIGN STYLE: ${style}\n\n` : "") +
+      (dna ? `${dna}\n` : "") +
       `Apply the new request to the current files. Keep everything that already exists unless the request says to remove or change it. ` +
       `Reply with one short sentence, then either the COMPLETE updated file(s) in <file path="..."> blocks, ` +
       `or, for a small change of a few lines, <edit> blocks with <find> and <replace>.`

@@ -7,6 +7,11 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 export const metadata: Metadata = {
   title: "NEXA AI",
   description: "Describe an app, get working code and a live preview.",
+  openGraph: {
+    title: "NEXA AI",
+    description: "Describe an app or website in a chat, get working code and a live preview. Publish it or download it.",
+    type: "website",
+  },
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };

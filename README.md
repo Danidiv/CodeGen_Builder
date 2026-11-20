@@ -199,3 +199,33 @@ Tracking saves only what happened (build, publish, download, login, limit reache
 The login form has **Forgot password?**. It uses Supabase's own email, so no other service is needed. Once in Supabase:
 Authentication -> URL Configuration: set **Site URL** to your live address (for example `https://your-app.vercel.app`) and add the same address (and `http://localhost:3000` for testing) under **Redirect URLs**. Without this the email link does not come back to your app.
 The free Supabase email service sends only a few emails per hour. If many people need emails, set up your own SMTP later (Authentication -> SMTP Settings).
+
+
+## Login screen updates by itself (useUser)
+
+Generated sites with a login now use `const { user, loading } = useUser()` from `./nexa`. It changes by itself after `auth.signIn`, `auth.signUp` and `auth.signOut`, so the screen switches at once (before, a site could stay on the login form until the page was reloaded). `auth.onChange(fn)` does the same without React. Sites built earlier keep their old code: ask the chat "After login the screen does not change. Use useUser() from ./nexa" and it is fixed.
+
+## Real page pictures on the project cards
+
+About 3.5 seconds after a preview has loaded, `/nexa-shot.ts` (added to the preview only, see `lib/shot.ts`) takes one small JPEG of the top of the page with the `html-to-image` library (loaded from jsDelivr) and posts it to the builder. It is saved inside `projects.data.thumb.shot` and shown as the card cover on the start page. If it cannot be made (narrow preview, CDN blocked, a photo that refuses to be copied), the card keeps the old cover (first photo or colours). The picture is only taken in the builder preview: not on published sites, and the helper is removed from downloaded ZIP files.
+
+## Preview bar and "Cinematic dark" style
+
+- The bar above the preview now has a reload button, an address pill (page and project name), undo/redo/history/download, device sizes, fullscreen and a **Style** menu.
+- New style **Cinematic dark** (full-screen photo hero, serif display headings, mono labels, one cyan accent). The default prompt also asks for this premium look when no style is chosen.
+- Fonts (Instrument Serif, Inter, JetBrains Mono) are loaded by `lib/fonts.ts` in the preview, the live site (`/s/[id]`) and the downloaded .zip.
+
+## Design DNA and motion recipes
+
+- The first build of a new project (empty starter, no style picked, no reference image) gets a random **Design DNA** (`lib/designDna.ts`): palette, font pairing, hero layout, three section ideas and three motion ideas. Every new site therefore looks different. Edits never get a new DNA.
+- `lib/prompts.ts` has the **MOTION RECIPES** (framer-motion: reveal, stagger, parallax, sticky story, horizontal scroll, marquee, tilt, 3D ring, count-up, progress bar, clip reveal). The compact prompt for small local models has neither.
+- To add a look: add an item to the pools in `lib/designDna.ts`. New fonts go into `lib/fonts.ts` (both the name list and the URL).
+- A true 360 product viewer or panorama needs the user's own photos; the AI uses the 3D ring instead.
+
+## First page for link checkers
+
+The app starts in the browser (login check), so the first HTML used to say only "Loading...". `components/Splash.tsx` now shows the name, a one-line description and a visually hidden "what NEXA AI does" text instead. Set `metadata` in `app/layout.tsx` for the title and share preview.
+
+## Published sites for link checkers and previews
+
+`/s/[id]` is now a server page: it reads the site, puts the title, a description, a share image (first photo) and the visible text of the site (`lib/siteSeo.ts`, read from the source code) into the first HTML, then the browser runs the live site as before. No SQL change. The page is not cached, so unpublish/block works at once. Sites are read with the public anon function `get_published_site`, nothing else.

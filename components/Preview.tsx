@@ -12,6 +12,7 @@ import CodeEditor from "./CodeEditor";
 import { detectDependencies } from "@/lib/deps";
 import { runTestOp, type TestMsg } from "@/lib/testDb";
 import { backendFiles } from "@/lib/backend";
+import { EXTERNAL_RESOURCES } from "@/lib/fonts";
 import {
   PROBE_AFTER,
   SHOW_HELP_AFTER,
@@ -40,6 +41,8 @@ type Props = {
   blank?: boolean;
   /** Keeps the test data of db() (saved data in preview mode) separate per project. */
   testScope?: string;
+  /** The running page sent a small picture of itself (for the project card). */
+  onShot?: (dataUrl: string) => void;
 };
 
 const DEVICE_WIDTH = { desktop: "100%", tablet: "768px", mobile: "390px" } as const;
@@ -213,7 +216,7 @@ function PreviewStatus({
   );
 }
 
-export default function Preview({ files, onError, busy = false, onFilesEdit, tab = "preview", device = "desktop", reloadSignal = 0, blank = false, testScope = "local" }: Props) {
+export default function Preview({ files, onError, busy = false, onFilesEdit, tab = "preview", device = "desktop", reloadSignal = 0, blank = false, testScope = "local", onShot }: Props) {
   // Bumping this restarts the preview.
   const [reloadKey, setReloadKey] = useState(0);
   const autoReloads = useRef(0);
@@ -230,6 +233,8 @@ export default function Preview({ files, onError, busy = false, onFilesEdit, tab
     setShown(files);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files, busy]);
+  const onShotRef = useRef(onShot);
+  onShotRef.current = onShot;
   const filesRef = useRef(files);
   filesRef.current = files;
 
@@ -249,6 +254,12 @@ export default function Preview({ files, onError, busy = false, onFilesEdit, tab
   // itself, its address changes with every reload).
   useEffect(() => {
     function onMessage(e: MessageEvent) {
+      const raw = e.data as { nexaShot?: boolean; data?: unknown } | null;
+      if (raw && raw.nexaShot === true) {
+        const img = raw.data;
+        if (typeof img === "string" && img.length < 120000 && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(img)) onShotRef.current?.(img);
+        return;
+      }
       const d = e.data as TestMsg | null;
       if (!d || d.nexaDb !== true || typeof d.id !== "string" || !e.source) return;
       let reply: { result?: unknown; error?: string };
@@ -281,7 +292,7 @@ export default function Preview({ files, onError, busy = false, onFilesEdit, tab
           files={{ ...backendFiles(null), ...shown }}
           customSetup={{ dependencies }}
           options={{
-            externalResources: ["https://cdn.tailwindcss.com"],
+            externalResources: EXTERNAL_RESOURCES,
             initMode: "immediate",
             bundlerTimeOut: 120000,
           }}

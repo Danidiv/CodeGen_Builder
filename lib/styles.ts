@@ -36,6 +36,13 @@ export const STYLES: DesignStyle[] = [
       "Bold and playful style: saturated colours (yellow-300, pink-500, blue-600 blocks), very large black headings (text-6xl font-black), thick borders (border-4 border-black), hard offset shadows (shadow-[6px_6px_0_0_#000]), sticker-like badges, emoji accents.",
   },
   {
+    id: "cinematic",
+    name: "Cinematic dark",
+    emoji: "🎬",
+    prompt:
+      "Cinematic dark style: near-black ink canvas (bg-neutral-950) with ONE electric accent (cyan-400). Full-screen hero with a big background photo (image:KEYWORDS, absolute inset-0 object-cover) under a dark gradient overlay (bg-gradient-to-b from-black/60 via-black/30 to-neutral-950). Huge display headings in a refined serif (style={{fontFamily:\"'Instrument Serif', serif\"}}, text-6xl md:text-8xl, tracking-tight, leading-[0.95]). Small uppercase mono labels for nav links and eyebrows (style={{fontFamily:\"'JetBrains Mono', monospace\"}}, text-xs tracking-[0.25em] uppercase, text-white/70). Body text in Inter, text-white/70. CTA as an underlined text link with an arrow (border-b-2 border-cyan-400 text-cyan-400) plus a ghost text link. Portfolio grid of large photos with hover zoom, thin white/10 dividers, lots of space.",
+  },
+  {
     id: "corporate",
     name: "Clean corporate",
     emoji: "🏢",

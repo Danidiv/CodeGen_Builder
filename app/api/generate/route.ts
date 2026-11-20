@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { CHAT_PROMPT, getSystemPrompt } from "@/lib/prompts";
+import { CHAT_PROMPT, DEFAULT_FILES, getSystemPrompt } from "@/lib/prompts";
 
 /** Local models get the short prompt (less context used); PROMPT_MODE=full|compact overrides. */
 function systemPrompt(): string {
@@ -11,11 +11,24 @@ import { ChatMessage, buildUserPrompt } from "@/lib/buildPrompt";
 import { getBearer, requireUser, userClient } from "@/lib/serverAuth";
 import { callUsage, limitMessage, parseLimit } from "@/lib/usage";
 import { getStyle } from "@/lib/styles";
+import { pickDna } from "@/lib/designDna";
 import { sanitizeAttachments } from "@/lib/attachments";
 import { ERROR_MARKER, LENGTH_MARKER } from "@/lib/protocol";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
+
+/**
+ * A random "design DNA" for the FIRST build of a project only: the project is still the empty starter,
+ * no style was picked, no reference image was attached, and the full (not the compact) prompt is used.
+ */
+function dnaFor(files: Record<string, string>, style: unknown, attachments: { kind: string }[], system: string): string {
+  if (getStyle(style)?.prompt) return "";
+  if (files["/App.tsx"] !== DEFAULT_FILES["/App.tsx"]) return "";
+  if (attachments.some((a) => a.kind === "image")) return "";
+  if (!system.includes("MOTION RECIPES")) return "";
+  return pickDna();
+}
 
 export async function POST(req: Request) {
   // Only signed-in users may spend AI budget (no-op when Supabase is not set up).
@@ -66,7 +79,7 @@ export async function POST(req: Request) {
         .slice(-8)
         .filter((m) => typeof m.content === "string" && (m.role === "user" || m.role === "assistant"))
         .map((m) => ({ role: m.role, content: m.content.slice(0, 1500) }))
-    : [{ role: "user", content: buildUserPrompt(messages, files, getStyle(body.style)?.prompt ?? "", attachments) }];
+    : [{ role: "user", content: buildUserPrompt(messages, files, getStyle(body.style)?.prompt ?? "", attachments, dnaFor(files, body.style, attachments, gen.system)) }];
 
   const provider = (process.env.LLM_PROVIDER || "anthropic").toLowerCase();
   const encoder = new TextEncoder();

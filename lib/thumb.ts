@@ -3,7 +3,7 @@
  * the code (Pexels / Unsplash / picsum) and the main colours of the design.
  * Computed from the files when a project is saved; nothing is fetched here.
  */
-export type Thumb = { img?: string; colors: string[] };
+export type Thumb = { img?: string; colors: string[]; /** real picture of the page (small JPEG as a data URL) */ shot?: string };
 
 const PALETTE: Record<string, string> = {
   red: "#ef4444", orange: "#f97316", amber: "#f59e0b", yellow: "#eab308", lime: "#84cc16",
@@ -39,12 +39,16 @@ export function computeThumb(files: Record<string, string>): Thumb {
 }
 
 /** CSS background (+ image URL) for a card; safe for missing or odd data. */
-export function projectCover(thumb: Thumb | null | undefined): { img?: string; background: string } {
+export function projectCover(thumb: Thumb | null | undefined): { img?: string; shot?: string; background: string } {
   const colors =
     thumb && Array.isArray(thumb.colors) && thumb.colors.length > 0
       ? thumb.colors.filter((c) => typeof c === "string" && /^#[0-9a-f]{3,8}$/i.test(c)).slice(0, 2)
       : [];
   const [a, b] = colors.length > 0 ? [colors[0], colors[1] ?? "#0f172a"] : ["#1e293b", "#0f172a"];
   const img = thumb && typeof thumb.img === "string" && thumb.img.startsWith("https://") ? thumb.img : undefined;
-  return { img, background: `linear-gradient(135deg, ${a}, ${b})` };
+  const shot =
+    thumb && typeof thumb.shot === "string" && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(thumb.shot) && thumb.shot.length < 150000
+      ? thumb.shot
+      : undefined;
+  return { img, shot, background: `linear-gradient(135deg, ${a}, ${b})` };
 }

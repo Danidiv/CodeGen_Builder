@@ -31,10 +31,13 @@ function formatDate(iso: string): string {
 /** Picture of a project: its first photo if it has one, otherwise a gradient in its colours. */
 function ProjectCover({ thumb }: { thumb?: Thumb | null }) {
   const [broken, setBroken] = useState(false);
-  const { img, background } = projectCover(thumb);
+  const { img, shot, background } = projectCover(thumb);
   return (
     <span className="relative block aspect-[16/9] w-full overflow-hidden" style={{ background }}>
-      {img && !broken ? (
+      {shot ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={shot} alt="" loading="lazy" className="h-full w-full object-cover object-top" />
+      ) : img && !broken ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={img} alt="" loading="lazy" onError={() => setBroken(true)} className="h-full w-full object-cover" />
       ) : (

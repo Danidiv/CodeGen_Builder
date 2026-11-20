@@ -1,3 +1,4 @@
+import { FONTS_URL } from "./fonts";
 import { backendFiles, usesBackend } from "./backend";
 import JSZip from "jszip";
 
@@ -15,6 +16,7 @@ function scaffold(appName: string): Record<string, string> {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${appName}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="${FONTS_URL}" />
   </head>
   <body>
     <div id="root"></div>
@@ -89,7 +91,8 @@ export async function downloadProjectZip(files: Record<string, string>, appName 
   const written = new Set<string>();
   for (const [path, content] of Object.entries(files)) {
     const clean = path.replace(/^\/+/, "");
-    root.file(clean, content);
+    // The cover-picture helper only exists inside NEXA AI.
+    root.file(clean, clean === "index.tsx" ? content.replace(/^import "\.\/nexa-shot";\r?\n/m, "") : content);
     written.add(clean);
   }
   for (const [path, content] of Object.entries(scaffold(appName))) {

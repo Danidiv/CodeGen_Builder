@@ -2,31 +2,28 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import {
+  ArrowDownRight, ArrowLeft, ArrowUpRight, BarChart3, Bot, Calendar, Clock3, Database, Download, FileText, Globe, Hammer, KeyRound,
+  Layers, LayoutDashboard, Link2, MessageSquare, RefreshCw, ScrollText, Search, Shapes, Sparkles, Users,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
   adminCall, fmtDate, nf, pct,
-  type DayRow, type Features, type FeedbackRow, type LogRow, type Overview, type ReportRow, type SiteRow, type TypeRow, type UserRow,
+  type DayRow, type Features, type FeedbackRow, type HeatRow, type LogRow, type Overview, type ReportRow, type SiteRow, type TypeRow, type UserRow,
 } from "@/lib/admin";
+import { GroupedBars, HeatGrid, HeatScale, RankList, RingStack } from "@/components/admin/charts";
+import "./admin.css";
 
 type TabId = "overview" | "users" | "feedback" | "sites" | "log";
-const TABS: { id: TabId; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "users", label: "Users" },
-  { id: "feedback", label: "Feedback" },
-  { id: "sites", label: "Sites and reports" },
-  { id: "log", label: "Admin log" },
+const TABS: { id: TabId; label: string; title: string; icon: React.ReactNode }[] = [
+  { id: "overview", label: "Dashboard", title: "Dashboard", icon: <LayoutDashboard size={18} /> },
+  { id: "users", label: "Users", title: "Users", icon: <Users size={18} /> },
+  { id: "feedback", label: "Feedback", title: "Feedback", icon: <MessageSquare size={18} /> },
+  { id: "sites", label: "Sites and reports", title: "Sites and reports", icon: <Globe size={18} /> },
+  { id: "log", label: "Admin log", title: "Admin log", icon: <ScrollText size={18} /> },
 ];
 
-function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="card p-4">
-      <p className="text-xs text-white/50">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{value}</p>
-      {hint && <p className="mt-1 text-xs text-white/40">{hint}</p>}
-    </div>
-  );
-}
+type Sb = NonNullable<typeof supabase>;
 
 function Section({ title, note, right, children }: { title: string; note?: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -42,39 +39,6 @@ function Section({ title, note, right, children }: { title: string; note?: strin
     </section>
   );
 }
-
-const METRICS = [
-  { id: "new_users", label: "New users" },
-  { id: "active_users", label: "Active users" },
-  { id: "requests", label: "AI requests" },
-  { id: "builds", label: "Builds" },
-  { id: "publishes", label: "Publishes" },
-] as const;
-
-function DailyChart({ rows, metric }: { rows: DayRow[]; metric: (typeof METRICS)[number]["id"] }) {
-  const top = Math.max(0, ...rows.map((r) => Number(r[metric])));
-  const max = Math.max(1, top);
-  return (
-    <div className="card p-4">
-      <div className="flex h-40 items-end gap-1" role="img" aria-label="Daily chart">
-        {rows.map((r) => {
-          const v = Number(r[metric]);
-          return (
-            <div key={r.day} className="group relative flex h-full min-w-0 flex-1 flex-col justify-end" title={`${fmtDate(r.day)}: ${nf(v)}`}>
-              <div className="rounded-t bg-accent transition-colors group-hover:bg-accent-hover" style={{ height: `${Math.max(v > 0 ? 3 : 0, (v / max) * 100)}%` }} />
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-2 flex justify-between text-xs tabular-nums text-white/40">
-        <span>{rows[0] ? fmtDate(rows[0].day) : ""}</span>
-        <span>highest day: {nf(top)}</span>
-        <span>{rows.length ? fmtDate(rows[rows.length - 1].day) : ""}</span>
-      </div>
-    </div>
-  );
-}
-
 function RankBars({ rows, empty }: { rows: { label: string; n: number; extra?: string }[]; empty: string }) {
   const max = Math.max(1, ...rows.map((r) => r.n));
   if (rows.length === 0) return <p className="card p-4 text-sm text-white/40">{empty}</p>;
@@ -83,8 +47,8 @@ function RankBars({ rows, empty }: { rows: { label: string; n: number; extra?: s
       {rows.map((r) => (
         <div key={r.label} className="grid grid-cols-[110px_1fr_auto] items-center gap-3 text-sm">
           <span className="truncate text-white/80">{r.label}</span>
-          <div className="h-2 overflow-hidden rounded-full bg-white/5">
-            <div className="h-full rounded-full bg-accent" style={{ width: `${(r.n / max) * 100}%` }} />
+          <div className="h-2 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full" style={{ width: `${(r.n / max) * 100}%`, background: "linear-gradient(90deg,#5b63f0,#8b5cf6)" }} />
           </div>
           <span className="tabular-nums text-white/60">
             {nf(r.n)}
@@ -92,172 +56,6 @@ function RankBars({ rows, empty }: { rows: { label: string; n: number; extra?: s
           </span>
         </div>
       ))}
-    </div>
-  );
-}
-
-function OverviewTab({ sb }: { sb: NonNullable<typeof supabase> }) {
-  const [ov, setOv] = useState<Overview | null>(null);
-  const [daily, setDaily] = useState<DayRow[]>([]);
-  const [types, setTypes] = useState<TypeRow[]>([]);
-  const [feat, setFeat] = useState<Features | null>(null);
-  const [days, setDays] = useState(14);
-  const [period, setPeriod] = useState(30);
-  const [metric, setMetric] = useState<(typeof METRICS)[number]["id"]>("new_users");
-  const [cost, setCost] = useState("0.03");
-  const [error, setError] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    try {
-      const c = localStorage.getItem("nexa-admin-cost");
-      if (c) setCost(c);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  useEffect(() => {
-    let off = false;
-    setError(null);
-    Promise.all([
-      adminCall<Overview>(sb, "admin_overview"),
-      adminCall<DayRow[]>(sb, "admin_daily", { p_days: days }),
-      adminCall<TypeRow[]>(sb, "admin_types", { p_days: period }),
-      adminCall<Features>(sb, "admin_features", { p_days: period }),
-    ])
-      .then(([o, d, t, f]) => {
-        if (off) return;
-        setOv(o);
-        setDaily(d);
-        setTypes(t);
-        setFeat(f);
-      })
-      .catch((e) => !off && setError(e instanceof Error ? e.message : "Could not load."));
-    return () => {
-      off = true;
-    };
-  }, [sb, days, period, tick]);
-
-  const perReq = Number(cost) > 0 ? Number(cost) : 0;
-  const money = (n: number) => "$" + (n * perReq).toFixed(n * perReq >= 100 ? 0 : 2);
-
-  if (error) return <p className="card p-4 text-sm text-red-300">{error}</p>;
-  if (!ov || !feat) return <p className="text-sm text-white/50">Loading...</p>;
-
-  return (
-    <div className="space-y-8">
-      <Section
-        title="Users"
-        right={
-          <button className="btn btn-ghost" onClick={() => setTick((t) => t + 1)}>
-            <RefreshCw size={14} /> Refresh
-          </button>
-        }
-      >
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          <Tile label="All users" value={nf(ov.users_total)} />
-          <Tile label="New today" value={nf(ov.users_today)} hint={`${nf(ov.users_7d)} in 7 days`} />
-          <Tile label="Tried the AI" value={nf(ov.activated)} hint={`${pct(ov.activated, ov.users_total)} of all users`} />
-          <Tile label="Came back" value={nf(ov.returning)} hint="used the AI on 2+ different days" />
-          <Tile label="Active today" value={nf(ov.active_today)} hint={`${nf(ov.active_7d)} in 7 days`} />
-        </div>
-      </Section>
-
-      <Section title="Activity" note="Requests are counted by the usage limit. The cost is only an estimate from the number you type.">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          <Tile label="AI requests today" value={nf(ov.requests_today)} hint={perReq ? "about " + money(ov.requests_today) : undefined} />
-          <Tile label="Last 7 days" value={nf(ov.requests_7d)} hint={perReq ? "about " + money(ov.requests_7d) : undefined} />
-          <Tile label="All time" value={nf(ov.requests_total)} hint={perReq ? "about " + money(ov.requests_total) : undefined} />
-          <Tile label="Builds (7 days)" value={nf(ov.builds_7d)} hint={`${nf(ov.build_fails_7d)} failed`} />
-          <Tile label="Limit reached (7 days)" value={nf(ov.limit_hits_7d)} hint="people who wanted more" />
-        </div>
-        <label className="flex items-center gap-2 text-xs text-white/50">
-          Cost per AI request (USD)
-          <input
-            id="cost-per-request"
-            className="input w-24"
-            inputMode="decimal"
-            value={cost}
-            onChange={(e) => {
-              setCost(e.target.value);
-              try {
-                localStorage.setItem("nexa-admin-cost", e.target.value);
-              } catch {
-                /* ignore */
-              }
-            }}
-          />
-          <span>Check your AI provider bill and type the real average.</span>
-        </label>
-      </Section>
-
-      <Section
-        title="Over time"
-        right={
-          <div className="flex flex-wrap gap-2">
-            <select id="metric" className="input" value={metric} onChange={(e) => setMetric(e.target.value as typeof metric)} aria-label="Metric">
-              {METRICS.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-            <select id="days" className="input" value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Days">
-              <option value={14}>14 days</option>
-              <option value={30}>30 days</option>
-              <option value={90}>90 days</option>
-            </select>
-          </div>
-        }
-      >
-        <DailyChart rows={daily} metric={metric} />
-      </Section>
-
-      <Section
-        title="What people build and use"
-        note="From the first build of each project. Only counts and yes/no flags are saved, never the text people write."
-        right={
-          <select id="period" className="input" value={period} onChange={(e) => setPeriod(Number(e.target.value))} aria-label="Period">
-            <option value={7}>Last 7 days</option>
-            <option value={30}>Last 30 days</option>
-            <option value={90}>Last 90 days</option>
-          </select>
-        }
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <p className="text-xs text-white/50">Kinds of site</p>
-            <RankBars rows={types.map((t) => ({ label: t.type, n: t.n }))} empty="No builds yet in this period." />
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs text-white/50">Features (share of {nf(feat.builds)} builds)</p>
-            <RankBars
-              empty="No builds yet in this period."
-              rows={[
-                { label: "Forms", n: feat.forms, extra: pct(feat.forms, feat.builds) },
-                { label: "Saved data", n: feat.data, extra: pct(feat.data, feat.builds) },
-                { label: "Visitor login", n: feat.login, extra: pct(feat.login, feat.builds) },
-                { label: "Reference URL", n: feat.reference, extra: pct(feat.reference, feat.builds) },
-                { label: "Auto-fix runs", n: feat.autofix, extra: pct(feat.autofix, feat.builds) },
-                { label: "Published", n: feat.publishes },
-                { label: "Downloaded", n: feat.downloads },
-                { label: "Build failed", n: feat.failed },
-                { label: "Hit the limit", n: feat.limit_hits },
-              ].filter((r) => feat.builds > 0 || r.n > 0)}
-            />
-          </div>
-        </div>
-      </Section>
-
-      <Section title="Accounts and safety">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Tile label="Live sites" value={nf(ov.sites_total)} />
-          <Tile label="Reports" value={nf(ov.reports_total)} hint="see Sites and reports" />
-          <Tile label="Pro users" value={nf(ov.pro_users)} />
-          <Tile label="Banned users" value={nf(ov.banned_users)} />
-        </div>
-      </Section>
     </div>
   );
 }
@@ -357,11 +155,11 @@ function UserEditor({ sb, u, onDone }: { sb: NonNullable<typeof supabase>; u: Us
   );
 }
 
-function UsersTab({ sb }: { sb: NonNullable<typeof supabase> }) {
+function UsersTab({ sb, initial = "" }: { sb: NonNullable<typeof supabase>; initial?: string }) {
   const PAGE = 50;
   const [rows, setRows] = useState<UserRow[]>([]);
-  const [search, setSearch] = useState("");
-  const [q, setQ] = useState("");
+  const [search, setSearch] = useState(initial);
+  const [q, setQ] = useState(initial);
   const [more, setMore] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -705,12 +503,295 @@ function LogTab({ sb }: { sb: NonNullable<typeof supabase> }) {
   );
 }
 
+const PAIRS = [
+  { id: "users", a: "New users", b: "Active users", ka: "new_users", kb: "active_users" },
+  { id: "work", a: "Builds", b: "Publishes", ka: "builds", kb: "publishes" },
+  { id: "req", a: "AI requests", b: "Builds", ka: "requests", kb: "builds" },
+] as const;
+
+const SLOTS = ["12am", "4am", "8am", "12pm", "4pm", "8pm"];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const sum = (rows: DayRow[], k: "requests" | "builds") => rows.reduce((s, r) => s + Number(r[k]), 0);
+const shortDay = (iso: string) => new Date(iso + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/** Green pill with the change against the period before. */
+function Delta({ now, before }: { now: number; before: number }) {
+  if (before <= 0) return <span className="ad-delta flat">{now > 0 ? "new" : "0%"}</span>;
+  const p = ((now - before) / before) * 100;
+  const up = p >= 0;
+  return (
+    <span className={`ad-delta ${up ? "" : "down"}`} title="Compared with the 7 days before">
+      {up ? "+" : ""}
+      {p.toFixed(1)}%{up ? <ArrowUpRight size={14} aria-hidden /> : <ArrowDownRight size={14} aria-hidden />}
+    </span>
+  );
+}
+
+function Card({ icon, title, sub, right, children }: { icon: React.ReactNode; title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section className="ad-card">
+      <div className="ad-card-head">
+        <span className="ad-ico" aria-hidden>
+          {icon}
+        </span>
+        <div className="grow">
+          <h2>{title}</h2>
+          {sub && <small>{sub}</small>}
+        </div>
+        {right}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function OverviewTab({ sb, ov, tick, onRefresh, onGoto }: { sb: Sb; ov: Overview | null; tick: number; onRefresh: () => void; onGoto: (t: TabId) => void }) {
+  const [range, setRange] = useState(30);
+  const [pairId, setPairId] = useState<(typeof PAIRS)[number]["id"]>("users");
+  const [daily, setDaily] = useState<DayRow[]>([]);
+  const [types, setTypes] = useState<TypeRow[]>([]);
+  const [feat, setFeat] = useState<Features | null>(null);
+  const [heat, setHeat] = useState<HeatRow[] | null>(null);
+  const [heatError, setHeatError] = useState<string | null>(null);
+  const [cost, setCost] = useState("0.03");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem("nexa-admin-cost");
+      if (c) setCost(c);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    let off = false;
+    setError(null);
+    Promise.all([
+      adminCall<DayRow[]>(sb, "admin_daily", { p_days: Math.min(90, Math.max(range, 14)) }),
+      adminCall<TypeRow[]>(sb, "admin_types", { p_days: range }),
+      adminCall<Features>(sb, "admin_features", { p_days: range }),
+    ])
+      .then(([d, t, f]) => {
+        if (off) return;
+        setDaily(d);
+        setTypes(t);
+        setFeat(f);
+      })
+      .catch((e) => !off && setError(e instanceof Error ? e.message : "Could not load."));
+    // The heat map is newer than the rest: if the database is not updated yet, only this card says so.
+    adminCall<HeatRow[]>(sb, "admin_heatmap", { p_days: range }).then(
+      (h) => {
+        if (off) return;
+        setHeat(h);
+        setHeatError(null);
+      },
+      (e) => !off && setHeatError(e instanceof Error ? e.message : "Could not load.")
+    );
+    return () => {
+      off = true;
+    };
+  }, [sb, range, tick]);
+
+  const pair = PAIRS.find((p) => p.id === pairId) ?? PAIRS[0];
+  const shown = useMemo(() => daily.slice(-range), [daily, range]);
+  const points = useMemo(() => shown.map((r) => ({ label: shortDay(r.day), a: Number(r[pair.ka]), b: Number(r[pair.kb]) })), [shown, pair]);
+  const last7 = daily.slice(-7);
+  const prev7 = daily.slice(-14, -7);
+
+  const cells = useMemo(() => {
+    const grid = SLOTS.map(() => DAYS.map(() => 0));
+    for (const h of heat ?? []) if (grid[h.slot] && h.dow >= 0 && h.dow < 7) grid[h.slot][h.dow] = Number(h.n);
+    return grid;
+  }, [heat]);
+
+  const perReq = Number(cost) > 0 ? Number(cost) : 0;
+  const money = (n: number) => "$" + (n * perReq).toFixed(n * perReq >= 100 ? 0 : 2);
+
+  function downloadCsv() {
+    const head = "day,new_users,active_users,requests,builds,publishes";
+    const body = shown.map((r) => [r.day, r.new_users, r.active_users, r.requests, r.builds, r.publishes].join(","));
+    const url = URL.createObjectURL(new Blob([head + "\n" + body.join("\n") + "\n"], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nexa-ai-last-${range}-days.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  if (error) return <p className="ad-error">{error}</p>;
+  if (!ov || !feat) return <p className="ad-note">Loading...</p>;
+
+  const ringPct = (n: number) => (feat.builds > 0 ? Math.round((n / feat.builds) * 100) : 0);
+  const typeRows = types.slice(0, 5).map((t) => ({ name: t.type, n: t.n, icon: <span style={{ fontSize: 12, fontWeight: 700 }}>{(t.type[0] ?? "?").toUpperCase()}</span> }));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="ad-sub" style={{ margin: "0 0 2px" }}>
+        <p>
+          {ov.reports_total > 0 ? (
+            <>
+              You have{" "}
+              <button className="ad-nav-item" style={{ display: "inline", width: "auto", padding: 0, fontSize: "inherit", color: "#8f9bff" }} onClick={() => onGoto("sites")}>
+                {ov.reports_total} new {ov.reports_total === 1 ? "report" : "reports"}
+              </button>
+            </>
+          ) : (
+            "No reports to review"
+          )}
+        </p>
+        <div className="ad-tools">
+          <label className="ad-pill">
+            <Calendar size={15} aria-hidden />
+            <select id="range" value={range} onChange={(e) => setRange(Number(e.target.value))} aria-label="Time range">
+              <option value={7}>Last 7 days</option>
+              <option value={14}>Last 14 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 90 days</option>
+            </select>
+          </label>
+          <button className="ad-pill" onClick={onRefresh}>
+            <RefreshCw size={15} aria-hidden /> Refresh
+          </button>
+          <button className="ad-pill" onClick={downloadCsv} disabled={shown.length === 0}>
+            Download <Download size={15} aria-hidden />
+          </button>
+        </div>
+      </div>
+
+      <div className="ad-grid ad-kpis">
+        <Card icon={<Users size={22} />} title="All users">
+          <div className="ad-kpi-value">
+            <strong>{nf(ov.users_total)}</strong>
+            <Delta now={ov.users_total} before={ov.users_total - ov.users_7d} />
+          </div>
+          <p className="ad-hint">
+            {nf(ov.users_today)} joined today, {nf(ov.users_7d)} in 7 days
+          </p>
+        </Card>
+        <Card icon={<Bot size={22} />} title="AI requests">
+          <div className="ad-kpi-value">
+            <strong>{nf(sum(last7, "requests"))}</strong>
+            <Delta now={sum(last7, "requests")} before={sum(prev7, "requests")} />
+          </div>
+          <p className="ad-hint">Last 7 days. {nf(ov.requests_today)} today, {nf(ov.requests_total)} all time</p>
+        </Card>
+        <Card icon={<Hammer size={22} />} title="Builds">
+          <div className="ad-kpi-value">
+            <strong>{nf(sum(last7, "builds"))}</strong>
+            <Delta now={sum(last7, "builds")} before={sum(prev7, "builds")} />
+          </div>
+          <p className="ad-hint">Last 7 days. {nf(ov.build_fails_7d)} failed</p>
+        </Card>
+      </div>
+
+      <div className="ad-grid ad-row-2">
+        <Card
+          icon={<BarChart3 size={22} />}
+          title="Activity overview"
+          sub={`Last ${range} days`}
+          right={
+            <select id="pair" className="ad-select" value={pairId} onChange={(e) => setPairId(e.target.value as typeof pairId)} aria-label="Compare">
+              {PAIRS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.a} / {p.b}
+                </option>
+              ))}
+            </select>
+          }
+        >
+          <GroupedBars points={points} aLabel={pair.a} bLabel={pair.b} />
+        </Card>
+
+        <Card icon={<Layers size={22} />} title="Features in use" sub="Share of builds">
+          <RingStack
+            callout={{ big: nf(feat.builds), small: `builds, last ${range} days` }}
+            rings={[
+              { label: "Forms", pct: ringPct(feat.forms), color: "#b45cf0", icon: <FileText size={18} /> },
+              { label: "Saved data", pct: ringPct(feat.data), color: "#6b8cff", icon: <Database size={18} /> },
+              { label: "Login", pct: ringPct(feat.login), color: "#4a56d8", icon: <KeyRound size={18} /> },
+              { label: "Reference", pct: ringPct(feat.reference), color: "#8f6cf0", icon: <Link2 size={18} /> },
+            ]}
+          />
+        </Card>
+      </div>
+
+      <div className="ad-grid ad-row-3">
+        <Card icon={<Shapes size={22} />} title="Kinds of site" sub="From the first build of each project">
+          <RankList rows={typeRows} empty="No builds yet in this period." />
+        </Card>
+        <Card icon={<Clock3 size={22} />} title="Builds by time" sub="Pakistan time, 4-hour slots" right={<HeatScale />}>
+          {heatError ? <p className="ad-note">{heatError}</p> : <HeatGrid cells={cells} rowLabels={SLOTS} colLabels={DAYS} />}
+          {!heatError && (heat ?? []).length === 0 && <p className="ad-note">No builds yet in this period.</p>}
+        </Card>
+      </div>
+
+      <div className="ad-grid ad-small">
+        {[
+          ["Active today", nf(ov.active_today), `${nf(ov.active_7d)} in 7 days`],
+          ["Came back", nf(ov.returning), "used the AI on 2+ days"],
+          ["Tried the AI", nf(ov.activated), `${pct(ov.activated, ov.users_total)} of all users`],
+          ["Limit reached", nf(ov.limit_hits_7d), "in 7 days, wanted more"],
+          ["Live sites", nf(ov.sites_total), `${nf(feat.publishes)} published in ${range} days`],
+          ["Reports", nf(ov.reports_total), "see Sites and reports"],
+          ["Pro users", nf(ov.pro_users), ""],
+          ["Banned users", nf(ov.banned_users), ""],
+        ].map(([label, value, hint]) => (
+          <div key={label} className="ad-stat">
+            <p>{label}</p>
+            <strong>{value}</strong>
+            {hint && <small>{hint}</small>}
+          </div>
+        ))}
+      </div>
+
+      <Card icon={<Sparkles size={22} />} title="AI cost estimate" sub="Only an estimate: it uses the number you type. Check your AI provider bill for the real average.">
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16 }}>
+          <label className="ad-note" style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+            Cost per request (USD)
+            <input
+              id="cost-per-request"
+              className="input"
+              style={{ width: 90 }}
+              inputMode="decimal"
+              value={cost}
+              onChange={(e) => {
+                setCost(e.target.value);
+                try {
+                  localStorage.setItem("nexa-admin-cost", e.target.value);
+                } catch {
+                  /* ignore */
+                }
+              }}
+            />
+          </label>
+          {perReq > 0 && (
+            <>
+              <span>Today: <b>{money(ov.requests_today)}</b></span>
+              <span>7 days: <b>{money(ov.requests_7d)}</b></span>
+              <span>All time: <b>{money(ov.requests_total)}</b></span>
+            </>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [checked, setChecked] = useState(false);
   const [admin, setAdmin] = useState<boolean | null>(null);
   const [tab, setTab] = useState<TabId>("overview");
   const [problem, setProblem] = useState<string | null>(null);
+  const [ov, setOv] = useState<Overview | null>(null);
+  const [tick, setTick] = useState(0);
+  const [query, setQuery] = useState("");
+  const [userSearch, setUserSearch] = useState("");
 
   useEffect(() => {
     const sb = supabase;
@@ -740,53 +821,118 @@ export default function AdminPage() {
     });
   }, [session]);
 
-  let body: React.ReactNode;
-  if (!checked || (session && admin === null)) {
-    body = <p className="text-sm text-white/50">Loading...</p>;
-  } else if (!supabase || !session || !admin) {
-    body = (
-      <div className="card max-w-md space-y-2 p-6">
-        <p className="text-white">This page is only for admins.</p>
-        {problem && <p className="text-sm text-amber-300">{problem}</p>}
-        {!session && supabase && <p className="text-sm text-white/50">Sign in on the main page first, then open this page again.</p>}
-      </div>
+  // Numbers for the badges and the dashboard cards.
+  useEffect(() => {
+    const sb = supabase;
+    if (!sb || !admin) return;
+    let off = false;
+    adminCall<Overview>(sb, "admin_overview").then(
+      (o) => !off && setOv(o),
+      () => {}
     );
-  } else {
-    body = (
-      <>
-        <nav className="mb-6 flex gap-1 overflow-x-auto border-b border-line" aria-label="Admin sections">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors ${tab === t.id ? "border-accent text-white" : "border-transparent text-white/50 hover:text-white"}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-        {tab === "overview" && <OverviewTab sb={supabase} />}
-        {tab === "users" && <UsersTab sb={supabase} />}
-        {tab === "feedback" && <FeedbackTab sb={supabase} />}
-        {tab === "sites" && <SitesTab sb={supabase} />}
-        {tab === "log" && <LogTab sb={supabase} />}
-      </>
+    return () => {
+      off = true;
+    };
+  }, [admin, tick]);
+
+  const email = session?.user.email ?? "";
+  const current = TABS.find((t) => t.id === tab) ?? TABS[0];
+  const refresh = useCallback(() => setTick((t) => t + 1), []);
+
+  if (!checked || (session && admin === null)) {
+    return (
+      <main className="ad">
+        <p className="ad-note" style={{ padding: 24 }}>Loading...</p>
+      </main>
+    );
+  }
+  if (!supabase || !session || !admin) {
+    return (
+      <main className="ad" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <div className="ad-card" style={{ maxWidth: 420 }}>
+          <p style={{ margin: 0, fontSize: 18 }}>This page is only for admins.</p>
+          {problem && <p className="ad-note" style={{ color: "#f6c177" }}>{problem}</p>}
+          {!session && supabase && <p className="ad-note">Sign in on the main page first, then open this page again.</p>}
+          <a href="/" className="ad-pill" style={{ marginTop: 16, textDecoration: "none" }}>
+            <ArrowLeft size={15} aria-hidden /> Back to the app
+          </a>
+        </div>
+      </main>
     );
   }
 
+  const nav = (t: (typeof TABS)[number]) => (
+    <button key={t.id} className="ad-nav-item" aria-current={tab === t.id ? "page" : undefined} onClick={() => setTab(t.id)}>
+      {t.icon}
+      {t.label}
+      {t.id === "sites" && ov && ov.reports_total > 0 && <span className="ad-badge">{ov.reports_total}</span>}
+    </button>
+  );
+
   return (
-    <main className="min-h-screen bg-app text-white/90">
-      <div className="mx-auto max-w-6xl px-4 py-6 md:px-6">
-        <header className="mb-6 flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold text-white">NEXA AI Admin</h1>
-            {session?.user.email && <p className="text-xs text-white/40">{session.user.email}</p>}
+    <main className="ad">
+      <div className="ad-frame">
+        <aside className="ad-side" aria-label="Admin menu">
+          <div className="ad-logo">
+            <span className="ad-mark" aria-hidden>
+              <Sparkles size={16} />
+            </span>
+            <b>NEXA</b>
+            <span>Admin</span>
           </div>
-          <a href="/" className="btn btn-ghost">
-            <ArrowLeft size={14} /> Back to the app
-          </a>
-        </header>
-        {body}
+          <div>
+            <p className="ad-label" style={{ margin: "0 0 10px" }}>Main menu</p>
+            <nav className="ad-nav">{TABS.map(nav)}</nav>
+          </div>
+          <div className="ad-promo">
+            <p>
+              Back to your
+              <br />
+              <b>NEXA AI</b> builder
+            </p>
+            <a href="/">
+              <ArrowLeft size={16} aria-hidden /> Open the app
+            </a>
+          </div>
+        </aside>
+
+        <div className="ad-main">
+          <nav className="ad-mobile-nav" aria-label="Admin sections">
+            {TABS.map(nav)}
+          </nav>
+          <div className="ad-top">
+            <h1 className="ad-title">{current.title}</h1>
+            <form
+              className="ad-search"
+              role="search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setUserSearch(query.trim());
+                setTab("users");
+              }}
+            >
+              <Search size={16} aria-hidden />
+              <input id="admin-search" type="search" placeholder="Find a user by email" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Find a user by email" />
+            </form>
+            <div className="ad-user">
+              <div className="who">
+                <strong>Admin</strong>
+                <small>{email}</small>
+              </div>
+              <span className="ad-avatar" aria-hidden>
+                {(email[0] ?? "A").toUpperCase()}
+              </span>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 18 }}>
+            {tab === "overview" && <OverviewTab sb={supabase} ov={ov} tick={tick} onRefresh={refresh} onGoto={setTab} />}
+            {tab === "users" && <UsersTab key={userSearch} sb={supabase} initial={userSearch} />}
+            {tab === "feedback" && <FeedbackTab sb={supabase} />}
+            {tab === "sites" && <SitesTab sb={supabase} />}
+            {tab === "log" && <LogTab sb={supabase} />}
+          </div>
+        </div>
       </div>
     </main>
   );

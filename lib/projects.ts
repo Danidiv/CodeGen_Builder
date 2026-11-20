@@ -11,6 +11,8 @@ export type ProjectData = {
   messages: UiMessage[];
   versions: Version[];
   active: number;
+  /** Picture of the running page (small JPEG data URL); stored inside `thumb`, not as its own field. */
+  shot?: string;
 };
 
 export const DEFAULT_PROJECT_NAME = "Untitled project";
@@ -54,6 +56,12 @@ export async function loadProject(
   return { meta, data: projectData ?? {} };
 }
 
+/** What is written to the `data` column: the project plus its card picture (colours, photo, page screenshot). */
+function toRow(data: ProjectData) {
+  const { shot, ...rest } = data;
+  return { ...rest, thumb: { ...computeThumb(data.files), ...(shot ? { shot } : {}) } };
+}
+
 export async function createProject(
   sb: SupabaseClient,
   name: string,
@@ -61,7 +69,7 @@ export async function createProject(
 ): Promise<ProjectMeta> {
   const { data: row, error } = await sb
     .from("projects")
-    .insert({ name, data: { ...data, thumb: computeThumb(data.files) } })
+    .insert({ name, data: toRow(data) })
     .select(META_COLUMNS)
     .single();
   if (error) fail("create the project", error);
@@ -74,7 +82,7 @@ export async function saveProject(
   name: string,
   data: ProjectData
 ): Promise<void> {
-  const { error } = await sb.from("projects").update({ name, data: { ...data, thumb: computeThumb(data.files) } }).eq("id", id);
+  const { error } = await sb.from("projects").update({ name, data: toRow(data) }).eq("id", id);
   if (error) fail("save the project", error);
 }
 

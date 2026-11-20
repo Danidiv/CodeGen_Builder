@@ -37,7 +37,13 @@ export default function AuthForm() {
       }
     } catch (err) {
       const m = err instanceof Error ? err.message : "";
-      setError(/rate limit|too many/i.test(m) ? "Too many emails were sent. Please wait a few minutes and try again." : m || "Something went wrong. Please try again.");
+      setError(
+        /rate limit|too many|not authorized/i.test(m)
+          ? mode === "forgot"
+            ? "We cannot send the reset email right now. Please try again later."
+            : "Sign-up is busy right now. Please try again in a few minutes."
+          : m || "Something went wrong. Please try again."
+      );
     } finally {
       setBusy(false);
     }
